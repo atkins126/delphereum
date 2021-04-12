@@ -21,6 +21,7 @@ uses
   // web3
   web3,
   web3.eth,
+  web3.eth.contract,
   web3.eth.defi,
   web3.eth.erc20,
   web3.eth.types,
@@ -53,6 +54,7 @@ type
     class procedure APY(
       client  : TWeb3;
       reserve : TReserve;
+      _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
       client  : TWeb3;
@@ -78,11 +80,18 @@ type
       callback: TAsyncReceiptEx); override;
   end;
 
+  TIdleViewHelper = class(TCustomContract)
+  public
+    constructor Create(aClient: TWeb3); reintroduce;
+    procedure GetFullAPR(idleToken: TAddress; callback: TAsyncQuantity);
+  end;
+
   TIdleToken = class abstract(TERC20)
   public
     constructor Create(aClient: TWeb3); reintroduce; overload; virtual; abstract;
     procedure Token(callback: TAsyncAddress);
     procedure GetAvgAPR(callback: TAsyncQuantity);
+    procedure GetFullAPR(callback: TAsyncQuantity);
     procedure TokenPrice(callback: TAsyncQuantity);
     procedure MintIdleToken(
       from              : TPrivateKey; // supplier of the underlying asset, and receiver of IdleTokens
@@ -178,7 +187,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) * reserve.Unscale(price)), nil);
+        callback(reserve.Scale(reserve.Unscale(amount) * (price.AsExtended / 1e18)), nil);
     end);
   finally
     IdleToken.free;
@@ -201,7 +210,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) / reserve.Unscale(price)), nil);
+        callback(reserve.Scale(reserve.Unscale(amount) / (price.AsExtended / 1e18)), nil);
     end);
   finally
     IdleToken.free;
@@ -218,18 +227,22 @@ begin
   Result := False;
   case reserve of
     DAI : Result := chain in [Mainnet, Kovan];
-    USDC: Result := chain = Mainnet;
+    USDC: Result := chain in [Mainnet, Kovan];
     USDT: Result := chain = Mainnet;
   end;
 end;
 
-class procedure TIdle.APY(client: TWeb3; reserve: TReserve; callback: TAsyncFloat);
+class procedure TIdle.APY(
+  client  : TWeb3;
+  reserve : TReserve;
+  _period : TPeriod;
+  callback: TAsyncFloat);
 var
   IdleToken: TIdleToken;
 begin
   IdleToken := IdleTokenClass[reserve].Create(client);
   try
-    IdleToken.GetAvgAPR(procedure(apr: BigInteger; err: IError)
+    IdleToken.GetFullAPR(procedure(apr: BigInteger; err: IError)
     begin
       if Assigned(err) then
         callback(0, err)
@@ -370,6 +383,18 @@ begin
   end);
 end;
 
+{ TIdleViewHelper }
+
+constructor TIdleViewHelper.Create(aClient: TWeb3);
+begin
+  inherited Create(aClient, '0xae2Ebae0a2bC9a44BdAa8028909abaCcd336b8f5');
+end;
+
+procedure TIdleViewHelper.GetFullAPR(idleToken: TAddress; callback: TAsyncQuantity);
+begin
+  web3.eth.call(Client, Contract, 'getFullAPR(address)', [idleToken], callback);
+end;
+
 { TIdleToken }
 
 // Returns the underlying asset contract address for this IdleToken.
@@ -378,9 +403,9 @@ begin
   web3.eth.call(Client, Contract, 'token()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback('', err)
+      callback(ADDRESS_ZERO, err)
     else
-      callback(TAddress.New(hex), nil)
+      callback(TAddress.New(hex), nil);
   end);
 end;
 
@@ -389,6 +414,19 @@ end;
 procedure TIdleToken.GetAvgAPR(callback: TAsyncQuantity);
 begin
   web3.eth.call(Client, Contract, 'getAvgAPR()', [], callback);
+end;
+
+// Get current IdleToken average APR considering governance tokens.
+procedure TIdleToken.GetFullAPR(callback: TAsyncQuantity);
+var
+  helper: TIdleViewHelper;
+begin
+  helper := TIdleViewHelper.Create(Self.Client);
+  try
+    helper.GetFullAPR(Self.Contract, callback);
+  finally
+    helper.Free;
+  end;
 end;
 
 // Current IdleToken price, in underlying (eg. DAI) terms.
@@ -431,7 +469,10 @@ end;
 
 constructor TIdleUSDC.Create(aClient: TWeb3);
 begin
-  inherited Create(aClient, '0x5274891bEC421B39D23760c04A6755eCB444797C');
+  if aClient.Chain = Kovan then
+    inherited Create(aClient, '0x0de23D3bc385a74E2196cfE827C8a640B8774B9f')
+  else
+    inherited Create(aClient, '0x5274891bEC421B39D23760c04A6755eCB444797C');
 end;
 
 { TIdleUSDT }

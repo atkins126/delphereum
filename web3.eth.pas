@@ -18,7 +18,7 @@ interface
 uses
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
-  // Web3
+  // web3
   web3,
   web3.eth.types;
 
@@ -33,8 +33,8 @@ const
 const
   ADDRESS_ZERO: TAddress = '0x0000000000000000000000000000000000000000';
 
-function  blockNumber(client: TWeb3): BigInteger; overload;
-procedure blockNumber(client: TWeb3; callback: TAsyncQuantity); overload;
+function  blockNumber(client: TWeb3): BigInteger; overload;               // blocking
+procedure blockNumber(client: TWeb3; callback: TAsyncQuantity); overload; // async
 
 procedure getBalance(client: TWeb3; address: TAddress; callback: TAsyncQuantity); overload;
 procedure getBalance(client: TWeb3; address: TAddress; const block: string; callback: TAsyncQuantity); overload;
@@ -141,7 +141,7 @@ uses
   // CryptoLib4Pascal
   ClpBigInteger,
   ClpIECPrivateKeyParameters,
-  // Web3
+  // web3
   web3.crypto,
   web3.eth.abi,
   web3.eth.crypto,
@@ -155,7 +155,7 @@ function blockNumber(client: TWeb3): BigInteger;
 var
   obj: TJsonObject;
 begin
-  obj := web3.json.rpc.send(client.URL, 'eth_blockNumber', []);
+  obj := client.JsonRpc.Send(client.URL, client.Security, 'eth_blockNumber', []);
   if Assigned(obj) then
   try
     Result := web3.json.getPropAsStr(obj, 'result');
@@ -166,7 +166,7 @@ end;
 
 procedure blockNumber(client: TWeb3; callback: TAsyncQuantity);
 begin
-  web3.json.rpc.send(client.URL, 'eth_blockNumber', [], procedure(resp: TJsonObject; err: IError)
+  client.JsonRpc.Send(client.URL, client.Security, 'eth_blockNumber', [], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
@@ -182,7 +182,7 @@ end;
 
 procedure getBalance(client: TWeb3; address: TAddress; const block: string; callback: TAsyncQuantity);
 begin
-  web3.json.rpc.send(client.URL, 'eth_getBalance', [address, block], procedure(resp: TJsonObject; err: IError)
+  client.JsonRpc.Send(client.URL, client.Security, 'eth_getBalance', [address, block], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
@@ -199,7 +199,7 @@ end;
 // returns the number of transations *sent* from an address
 procedure getTransactionCount(client: TWeb3; address: TAddress; const block: string; callback: TAsyncQuantity);
 begin
-  web3.json.rpc.send(client.URL, 'eth_getTransactionCount', [address, block], procedure(resp: TJsonObject; err: IError)
+  client.JsonRpc.Send(client.URL, client.Security, 'eth_getTransactionCount', [address, block], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
@@ -237,10 +237,10 @@ begin
       web3.json.quoteString(string(&to), '"'),
       web3.json.quoteString(abi, '"')
     ]
-  ));
+  )) as TJsonObject;
   try
     // step #3: execute a message call (without creating a transaction on the blockchain)
-    web3.json.rpc.send(client.URL, 'eth_call', [obj, block], procedure(resp: TJsonObject; err: IError)
+    client.JsonRpc.Send(client.URL, client.Security, 'eth_call', [obj, block], procedure(resp: TJsonObject; err: IError)
     begin
       if Assigned(err) then
         callback('', err)
@@ -428,14 +428,21 @@ begin
     if Assigned(err) then
       callback(nil, err)
     else
-      web3.eth.gas.estimateGas(client, from.Address, &to, data, gasLimit,
-        procedure(estimatedGas: BigInteger; err: IError)
-        begin
-          if Assigned(err) then
-            callback(nil, err)
-          else
-            write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback);
-        end);
+      from.Address(procedure(addr: TAddress; err: IError)
+      begin
+        if Assigned(err) then
+          callback(nil, err)
+        else
+          web3.eth.gas.estimateGas(
+            client, addr, &to, data, gasLimit,
+          procedure(estimatedGas: BigInteger; err: IError)
+          begin
+            if Assigned(err) then
+              callback(nil, err)
+            else
+              write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback);
+          end);
+      end);
   end);
 end;
 
@@ -453,14 +460,21 @@ var
   data: string;
 begin
   data := web3.eth.abi.encode(func, args);
-  web3.eth.gas.estimateGas(client, from.Address, &to, data, gasLimit,
-    procedure(estimatedGas: BigInteger; err: IError)
-    begin
-      if Assigned(err) then
-        callback(nil, err)
-      else
-        write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback);
-    end);
+  from.Address(procedure(addr: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.gas.estimateGas(
+        client, addr, &to, data, gasLimit,
+      procedure(estimatedGas: BigInteger; err: IError)
+      begin
+        if Assigned(err) then
+          callback(nil, err)
+        else
+          write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback);
+      end);
+  end);
 end;
 
 procedure write(
@@ -474,30 +488,32 @@ procedure write(
   estimatedGas: TWei;
   callback    : TAsyncReceipt);
 begin
-  web3.eth.tx.getNonce(
-    client,
-    from.Address,
-    procedure(nonce: BigInteger; err: IError)
-    begin
-      if Assigned(err) then
-        callback(nil, err)
-      else
-        signTransaction(client, nonce, from, &to, value, data, gasPrice, gasLimit, estimatedGas,
-          procedure(const sig: string; err: IError)
-          begin
-            if Assigned(err) then
-              callback(nil, err)
-            else
-              sendTransactionEx(client, sig, procedure(rcpt: ITxReceipt; err: IError)
-              begin
-                if Assigned(err) and (err.Message = 'nonce too low') then
-                  write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback)
-                else
-                  callback(rcpt, err);
-              end);
-          end);
-    end
-  );
+  from.Address(procedure(addr: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.tx.getNonce(client, addr, procedure(nonce: BigInteger; err: IError)
+      begin
+        if Assigned(err) then
+          callback(nil, err)
+        else
+          signTransaction(client, nonce, from, &to, value, data, gasPrice, gasLimit, estimatedGas,
+            procedure(const sig: string; err: IError)
+            begin
+              if Assigned(err) then
+                callback(nil, err)
+              else
+                sendTransactionEx(client, sig, procedure(rcpt: ITxReceipt; err: IError)
+                begin
+                  if Assigned(err) and (err.Message = 'nonce too low') then
+                    write(client, from, &to, value, data, gasPrice, gasLimit, estimatedGas, callback)
+                  else
+                    callback(rcpt, err);
+                end);
+            end);
+      end);
+  end);
 end;
 
 end.

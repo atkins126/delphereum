@@ -86,7 +86,8 @@ type
     procedure Name       (callback: TAsyncString);
     procedure Symbol     (callback: TAsyncString);
     procedure Decimals   (callback: TAsyncQuantity);
-    procedure TotalSupply(callback: TAsyncQuantity);
+    procedure TotalSupply(callback: TAsyncQuantity); overload;
+    procedure TotalSupply(const block: string; callback: TAsyncQuantity); overload;
     procedure BalanceOf  (owner: TAddress; callback: TAsyncQuantity);
     procedure Allowance  (owner, spender: TAddress; callback: TAsyncQuantity);
 
@@ -156,15 +157,15 @@ begin
   if Assigned(FOnTransfer) then
     if log.isEvent('Transfer(address,address,uint256)') then
       FOnTransfer(Self,
-                  TAddress.New(log.Topic[1]),
-                  TAddress.New(log.Topic[2]),
-                  log.Data[0].toBigInt);
+                  log.Topic[1].toAddress, // from
+                  log.Topic[2].toAddress, // to
+                  log.Data[0].toBigInt);  // value
   if Assigned(FOnApproval) then
     if log.isEvent('Approval(address,address,uint256)') then
       FOnApproval(Self,
-                  TAddress.New(log.Topic[1]),
-                  TAddress.New(log.Topic[2]),
-                  log.Data[0].toBigInt);
+                  log.Topic[1].toAddress, // owner
+                  log.Topic[2].toAddress, // spender
+                  log.Data[0].toBigInt);  // value
 end;
 
 procedure TERC20.SetOnTransfer(Value: TOnTransfer);
@@ -209,6 +210,11 @@ end;
 procedure TERC20.TotalSupply(callback: TAsyncQuantity);
 begin
   web3.eth.call(Client, Contract, 'totalSupply()', [], callback);
+end;
+
+procedure TERC20.TotalSupply(const block: string; callback: TAsyncQuantity);
+begin
+  web3.eth.call(Client, Contract, 'totalSupply()', block, [], callback);
 end;
 
 procedure TERC20.BalanceOf(owner: TAddress; callback: TAsyncQuantity);
@@ -273,16 +279,22 @@ procedure TERC20.ApproveEx(
   value   : BigInteger;
   callback: TAsyncReceipt);
 begin
-  Allowance(owner.Address, spender, procedure(approved: BigInteger; err: IError)
+  owner.Address(procedure(addr: TAddress; err: IError)
   begin
     if Assigned(err) then
       callback(nil, err)
     else
-      if ((value = 0) and (approved = 0))
-      or ((value > 0) and (approved >= value)) then
-        callback(nil, nil)
-      else
-        Approve(owner, spender, value, callback);
+      Allowance(addr, spender, procedure(approved: BigInteger; err: IError)
+      begin
+        if Assigned(err) then
+          callback(nil, err)
+        else
+          if ((value = 0) and (approved = 0))
+          or ((value > 0) and (approved >= value)) then
+            callback(nil, nil)
+          else
+            Approve(owner, spender, value, callback);
+      end);
   end);
 end;
 

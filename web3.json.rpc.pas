@@ -17,15 +17,12 @@ interface
 
 uses
   // Delphi
-  System.Types,
-  System.Classes,
-  System.SysUtils,
   System.JSON,
-  System.Net.URLClient,
-  System.Net.HttpClient,
-  // Web3
+  System.SysUtils,
+  // web3
   web3,
-  web3.json;
+  web3.json,
+  web3.sync;
 
 type
   EJsonRpc = class(EWeb3)
@@ -36,12 +33,12 @@ type
     property Code: Integer read FCode;
   end;
 
-  IJsonRpc = interface(IError)
+  IJsonRpcError = interface(IError)
   ['{CA68D639-A1CF-458F-B2BF-70E5F947DD41}']
     function Code: Integer;
   end;
 
-  TJsonRpc = class(TError, IJsonRpc)
+  TJsonRpcError = class(TError, IJsonRpcError)
   private
     FCode: Integer;
   public
@@ -49,15 +46,36 @@ type
     function Code: Integer;
   end;
 
-  TAsyncResponse = reference to procedure(resp: TJsonObject; err: IError);
+  TCustomJsonRpc = class abstract(TInterfacedObject, IProtocol, IJsonRpc)
+  strict private
+    class var
+      _ID: ICriticalInt64;
+  strict protected
+    class function ID: ICriticalInt64;
+    class function FormatArgs(args: array of const): string;
 
-function send(const URL, method: string; args: array of const; callback: TAsyncResponse): IAsyncResult; overload;
-function send(const URL, method: string; args: array of const): TJsonObject; overload;
+    class function GetPayload(
+      const method: string;
+      args        : array of const): string; overload;
+    class function GetPayload(
+      ID          : Int64;
+      const method: string;
+      args        : array of const): string; overload;
+  public
+    function Send(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const): TJsonObject; overload; virtual; abstract;
+    procedure Send(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const;
+      callback    : TAsyncJsonObject); overload; virtual; abstract;
+  end;
 
 implementation
-
-var
-  id: Cardinal;
 
 { EJsonRpc }
 
@@ -67,22 +85,29 @@ begin
   FCode := aCode;
 end;
 
-{ TJsonRpc }
+{ TJsonRpcError }
 
-constructor TJsonRpc.Create(aCode: Integer; const aMsg: string);
+constructor TJsonRpcError.Create(aCode: Integer; const aMsg: string);
 begin
   inherited Create(aMsg);
   FCode := aCode;
 end;
 
-function TJsonRpc.Code: Integer;
+function TJsonRpcError.Code: Integer;
 begin
    Result := FCode;
 end;
 
-{ global functions }
+{ TCustomJsonRpc }
 
-function formatArgs(args: array of const): string;
+class function TCustomJsonRpc.ID: ICriticalInt64;
+begin
+  if not Assigned(_ID) then
+    _ID := TCriticalInt64.Create(0);
+  Result := _ID;
+end;
+
+class function TCustomJsonRpc.FormatArgs(args: array of const): string;
 var
   arg: TVarRec;
 begin
@@ -98,7 +123,7 @@ begin
         vtString:
           Result := Result + quoteString(UnicodeString(PShortString(arg.VAnsiString)^), '"');
         vtObject:
-          Result := Result + web3.json.marshal(arg.VObject as TJsonObject);
+          Result := Result + web3.json.marshal(arg.VObject as TJsonValue);
         vtWideString:
           Result := Result + quoteString(WideString(arg.VWideString^), '"');
         vtInt64:
@@ -112,74 +137,22 @@ begin
   end;
 end;
 
-function getPayload(const method: string; args: array of const): string;
+class function TCustomJsonRpc.GetPayload(const method: string; args: array of const): string;
 begin
-  Inc(id);
-  Result := Format(
-    '{"jsonrpc": "2.0", "method": %s, "params": %s, "id": %d}'
-    , [web3.json.quoteString(method, '"'), formatArgs(args), id]);
-end;
-
-function send(const URL, method: string; args: array of const; callback: TAsyncResponse): IAsyncResult;
-var
-  client: THttpClient;
-  source: TStream;
-  resp  : TJsonObject;
-  err   : TJsonObject;
-begin
+  ID.Enter;
   try
-    client := THttpClient.Create;
-    source := TStringStream.Create(getPayload(method, args));
-    Result := client.BeginPost(procedure(const aSyncResult: IAsyncResult)
-    begin
-      try
-        resp := web3.json.unmarshal(THttpClient.EndAsyncHTTP(aSyncResult).ContentAsString(TEncoding.UTF8));
-        if Assigned(resp) then
-        try
-          // did we receive an error? then translate that into an exception
-          err := web3.json.getPropAsObj(resp, 'error');
-          if Assigned(err) then
-            callback(resp, TJsonRpc.Create(web3.json.getPropAsInt(err, 'code'), web3.json.getPropAsStr(err, 'message')))
-          else
-            // if we reached this far, then we have a valid response object
-            callback(resp, nil);
-        finally
-          resp.Free;
-        end;
-      finally
-        source.Free;
-        client.Free;
-      end;
-    end, URL, source, nil, [TNetHeader.Create('Content-Type', 'application/json')]);
-  except
-    on E: Exception do
-      callback(nil, TError.Create(E.Message));
-  end;
-end;
-
-function send(const URL, method: string; args: array of const): TJsonObject;
-var
-  client: THttpClient;
-  source: TStream;
-  err   : TJsonObject;
-begin
-  client := THttpClient.Create;
-  source := TStringStream.Create(getPayload(method, args));
-  try
-    Result := web3.json.unmarshal(
-      client.Post(URL, source, nil, [TNetHeader.Create('Content-Type', 'application/json')]).ContentAsString(TEncoding.UTF8)
-    );
-    if Assigned(Result) then
-    begin
-      // did we receive an error? then translate that into an exception
-      err := web3.json.getPropAsObj(Result, 'error');
-      if Assigned(err) then
-        raise EJsonRpc.Create(web3.json.getPropAsInt(err, 'code'), web3.json.getPropAsStr(err, 'message'));
-    end;
+    Result := GetPayload(ID.Inc, method, args);
   finally
-    source.Free;
-    client.Free;
+    ID.Leave;
   end;
+end;
+
+class function TCustomJsonRpc.GetPayload(ID: Int64; const method: string; args: array of const): string;
+begin
+  Result := Format(
+    '{"jsonrpc": "2.0", "method": %s, "params": %s, "id": %d}',
+    [web3.json.quoteString(method, '"'), FormatArgs(args), ID]
+  );
 end;
 
 end.

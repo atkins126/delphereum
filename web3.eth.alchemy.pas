@@ -9,7 +9,7 @@
 {                                                                              }
 {******************************************************************************}
 
-unit web3.eth.infura;
+unit web3.eth.alchemy;
 
 {$I web3.inc}
 
@@ -20,7 +20,7 @@ uses
   web3;
 
 type
-  EInfura = class(EWeb3);
+  EAlchemy = class(EWeb3);
 
 function endpoint(chain: TChain; const projectId: string): string; overload;
 function endpoint(chain: TChain; protocol: TProtocol; const projectId: string): string; overload;
@@ -42,17 +42,17 @@ end;
 function endpoint(chain: TChain; protocol: TProtocol; const projectId: string): string;
 const
   ENDPOINT: array[TChain] of array[TProtocol] of string = (
-    ('https://mainnet.infura.io/v3/%s', 'wss://mainnet.infura.io/ws/v3/%s'), // Mainnet
-    ('https://ropsten.infura.io/v3/%s', 'wss://ropsten.infura.io/ws/v3/%s'), // Ropsten
-    ('https://rinkeby.infura.io/v3/%s', 'wss://rinkeby.infura.io/ws/v3/%s'), // Rinkeby
-    ('https://goerli.infura.io/v3/%s',  'wss://goerli.infura.io/ws/v3/%s'),  // Goerli
-    ('', ''),                                                                // Optimism
-    ('', ''),                                                                // RSK_main_net
-    ('', ''),                                                                // RSK_test_net
-    ('https://kovan.infura.io/v3/%s',   'wss://kovan.infura.io/ws/v3/%s'),   // Kovan
-    ('', ''),                                                                // BSC_main_net
-    ('', ''),                                                                // BSC_test_net
-    ('', '')                                                                 // xDai
+    ('https://eth-mainnet.alchemyapi.io/v2/%s', 'wss://eth-mainnet.ws.alchemyapi.io/v2/%s'), // Mainnet
+    ('https://eth-ropsten.alchemyapi.io/v2/%s', 'wss://eth-ropsten.ws.alchemyapi.io/v2/%s'), // Ropsten
+    ('https://eth-rinkeby.alchemyapi.io/v2/%s', 'wss://eth-rinkeby.ws.alchemyapi.io/v2/%s'), // Rinkeby
+    ('https://eth-goerli.alchemyapi.io/v2/%s',  'wss://eth-goerli.ws.alchemyapi.io/v2/%s'),  // Goerli
+    ('', ''),                                                                                // Optimism
+    ('', ''),                                                                                // RSK_main_net
+    ('', ''),                                                                                // RSK_test_net
+    ('https://eth-kovan.alchemyapi.io/v2/%s',   'wss://eth-kovan.ws.alchemyapi.io/v2/%s'),   // Kovan
+    ('', ''),                                                                                // BSC_main_net
+    ('', ''),                                                                                // BSC_test_net
+    ('', '')                                                                                 // xDai
   );
 begin
   Result := ENDPOINT[chain][protocol];
@@ -66,7 +66,7 @@ begin
     Result := web3.eth.binance.endpoint(chain);
     EXIT;
   end;
-  raise EInfura.CreateFmt('%s not supported', [GetEnumName(TypeInfo(TChain), Ord(chain))]);
+  raise EAlchemy.CreateFmt('%s not supported', [GetEnumName(TypeInfo(TChain), Ord(chain))]);
 end;
 
 end.

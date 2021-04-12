@@ -33,9 +33,6 @@ uses
   web3.utils;
 
 type
-  ECompound = class(EWeb3);
-
-  // Global helper functions
   TCompound = class(TLendingProtocol)
   protected
     class procedure Approve(
@@ -52,6 +49,7 @@ type
     class procedure APY(
       client  : TWeb3;
       reserve : TReserve;
+      _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
       client  : TWeb3;
@@ -211,13 +209,17 @@ end;
 class function TCompound.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
   if reserve = USDT then
-    Result := chain in [Mainnet, Ropsten, Rinkeby, Kovan, Ganache]
+    Result := chain in [Mainnet, Ropsten, Rinkeby, Kovan]
   else
-    Result := chain in [Mainnet, Ropsten, Rinkeby, Goerli, Kovan, Ganache];
+    Result := chain in [Mainnet, Ropsten, Rinkeby, Goerli, Kovan];
 end;
 
 // Returns the annual yield as a percentage with 4 decimals.
-class procedure TCompound.APY(client: TWeb3; reserve: TReserve; callback: TAsyncFloat);
+class procedure TCompound.APY(
+  client  : TWeb3;
+  reserve : TReserve;
+  _period : TPeriod;
+  callback: TAsyncFloat);
 var
   cToken: TcToken;
 begin
@@ -295,29 +297,37 @@ begin
       callback(nil, 0, err);
       EXIT;
     end;
-    cToken := cTokenClass[reserve].Create(client);
-    if Assigned(cToken) then
+    from.Address(procedure(addr: TAddress; err: IError)
     begin
-      cToken.BalanceOf(from.Address, procedure(amount_ctoken: BigInteger; err: IError)
+      if Assigned(err) then
       begin
-        try
-          if Assigned(err) then
-          begin
-            callback(nil, 0, err);
-            EXIT;
-          end;
-          cToken.Redeem(from, amount_ctoken, procedure(rcpt: ITxReceipt; err: IError)
-          begin
+        callback(nil, 0, err);
+        EXIT;
+      end;
+      cToken := cTokenClass[reserve].Create(client);
+      if Assigned(cToken) then
+      begin
+        cToken.BalanceOf(addr, procedure(amount_ctoken: BigInteger; err: IError)
+        begin
+          try
             if Assigned(err) then
-              callback(nil, 0, err)
-            else
-              callback(rcpt, amount_underlying, err);
-          end);
-        finally
-          cToken.Free;
-        end;
-      end);
-    end;
+            begin
+              callback(nil, 0, err);
+              EXIT;
+            end;
+            cToken.Redeem(from, amount_ctoken, procedure(rcpt: ITxReceipt; err: IError)
+            begin
+              if Assigned(err) then
+                callback(nil, 0, err)
+              else
+                callback(rcpt, amount_underlying, err);
+            end);
+          finally
+            cToken.Free;
+          end;
+        end);
+      end;
+    end);
   end);
 end;
 
@@ -361,17 +371,17 @@ begin
     if log.isEvent('Mint(address,uint256,uint256)') then
       // emitted upon a successful Mint
       FOnMint(Self,
-              TAddress.New(log.Topic[1]),
-              log.Data[0].toBigInt,
-              log.Data[1].toBigInt);
+              log.Topic[1].toAddress, // minter
+              log.Data[0].toBigInt,   // amount
+              log.Data[1].toBigInt);  // tokens
 
   if Assigned(FOnRedeem) then
     if log.isEvent('Redeem(address,uint256,uint256)') then
       // emitted upon a successful Redeem
       FOnRedeem(Self,
-                TAddress.New(log.Topic[1]),
-                log.Data[0].toBigInt,
-                log.Data[1].toBigInt);
+                log.Topic[1].toAddress, // redeemer
+                log.Data[0].toBigInt,   // amount
+                log.Data[1].toBigInt);  // tokens
 end;
 
 procedure TcToken.SetOnMint(Value: TOnMint);
@@ -470,9 +480,9 @@ begin
   web3.eth.call(Client, Contract, 'underlying()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback('', err)
+      callback(ADDRESS_ZERO, err)
     else
-      callback(TAddress.New(hex), nil)
+      callback(TAddress.New(hex), nil);
   end);
 end;
 
@@ -482,7 +492,7 @@ constructor TcDAI.Create(aClient: TWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
-    Mainnet, Ganache:
+    Mainnet:
       inherited Create(aClient, '0x5d3a536e4d6dbd6114cc1ead35777bab948e3643');
     Ropsten:
       inherited Create(aClient, '0x6ce27497a64fffb5517aa4aee908b1e7eb63b9ff');
@@ -501,7 +511,7 @@ constructor TcUSDC.Create(aClient: TWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
-    Mainnet, Ganache:
+    Mainnet:
       inherited Create(aClient, '0x39aa39c021dfbae8fac545936693ac917d5e7563');
     Ropsten:
       inherited Create(aClient, '0x20572e4c090f15667cf7378e16fad2ea0e2f3eff');
@@ -520,14 +530,12 @@ constructor TcUSDT.Create(aClient: TWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
-    Mainnet, Ganache:
+    Mainnet:
       inherited Create(aClient, '0xf650c3d88d12db855b8bf7d11be6c55a4e07dcc9');
     Ropsten:
       inherited Create(aClient, '0xb6f7f1901ffbcbadf9cd9831a032395105bc3142');
     Rinkeby:
       inherited Create(aClient, '0x2fb298bdbef468638ad6653ff8376575ea41e768');
-    Goerli:
-      raise ECompound.Create('cUSDT is not supported on Goerli');
     Kovan:
       inherited Create(aClient, '0x3f0a0ea2f86bae6362cf9799b523ba06647da018');
   end;

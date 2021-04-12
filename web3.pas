@@ -17,6 +17,7 @@ interface
 
 uses
   // Delphi
+  System.JSON,
   System.SysUtils,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers;
@@ -27,30 +28,31 @@ type
     Ropsten,
     Rinkeby,
     Goerli,
+    Optimism,
     RSK_main_net,
     RSK_test_net,
     Kovan,
-    Ganache
+    BSC_main_net,
+    BSC_test_net,
+    xDai
   );
 
-const
-  chainId: array[TChain] of Integer = (
-    1,   // Mainnet
-    3,   // Ropsten
-    4,   // Rinkeby
-    5,   // Goerli
-    30,  // RSK_main_net
-    31,  // RSK_test_net
-    42,  // Kovan
-    1    // Ganache
-  );
+  TChainHelper = record helper for TChain
+    function Id: Integer;
+    function Name: string;
+    function Testnet: Boolean;
+    function Ethereum: Boolean;
+    function BlockExplorerURL: string;
+  end;
 
-type
-  TAddress    = string[42];
-  TPrivateKey = string[64];
-  TSignature  = string[132];
-  TWei        = BigInteger;
-  TTxHash     = string[66];
+  TAddress      = string[42];
+  TPrivateKey   = string[64];
+  TSignature    = string[132];
+  TWei          = BigInteger;
+  TTxHash       = string[66];
+  TUnixDateTime = Int64;
+  TProtocol     = (HTTPS, WebSockets);
+  TSecurity     = (Automatic, TLS_10, TLS_11, TLS_12, TLS_13);
 
   EWeb3 = class(Exception);
 
@@ -65,10 +67,14 @@ type
   public
     constructor Create(const Msg: string); overload;
     constructor Create(const Msg: string; const Args: array of const); overload;
-    function Message: string;
+    function Message: string; virtual;
   end;
 
+  TOnEtherscanApiKey = reference to procedure(var apiKey: string);
+
   TGasPrice = (
+    Outbid,
+    Fastest,
     Fast,    // expected to be mined in < 2 minutes
     Average, // expected to be mined in < 5 minutes
     SafeLow  // expected to be mined in < 30 minutes
@@ -77,6 +83,8 @@ type
   TGasStationInfo = record
     Speed : TGasPrice;
     apiKey: string;
+    Custom: TWei;
+    class function Average: TGasStationInfo; static;
   end;
   TOnGasStationInfo = reference to procedure(var info: TGasStationInfo);
 
@@ -86,6 +94,42 @@ type
   TNotImplemented = class(TError, INotImplemented)
   public
     constructor Create;
+  end;
+
+  TAsyncError      = reference to procedure(err : IError);
+  TAsyncJsonObject = reference to procedure(resp: TJsonObject; err: IError);
+  TAsyncJsonArray  = reference to procedure(resp: TJsonArray;  err: IError);
+
+  IProtocol = interface
+  ['{DC851A2E-D172-415C-9FD0-34977FD8F232}']
+  end;
+
+  IJsonRpc = interface(IProtocol)
+  ['{79B99FD7-3000-4839-96B4-6C779C25AD0C}']
+    function Send(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const): TJsonObject; overload;
+    procedure Send(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const;
+      callback    : TAsyncJsonObject); overload;
+  end;
+
+  IPubSub = interface(IJsonRpc)
+  ['{D63B43A1-60E4-4107-8B14-925399A4850A}']
+    procedure Subscribe(const subscription: string; callback: TAsyncJsonObject);
+    procedure Unsubscribe(const subscription: string);
+    procedure Disconnect;
+
+    procedure SetOnError(Value: TAsyncError);
+    procedure SetOnDisconnect(Value: TProc);
+
+    property OnError: TAsyncError write SetOnError;
+    property OnDisconnect: TProc write SetOnDisconnect;
   end;
 
   ISignatureDenied = interface(IError)
@@ -99,41 +143,129 @@ type
 
   TWeb3 = record
   private
-    FChain: TChain;
-    FURL  : string;
+    FChain   : TChain;
+    FURL     : string;
+    FProtocol: IProtocol;
+    FSecurity: TSecurity;
     FOnGasStationInfo  : TOnGasStationInfo;
+    FOnEtherscanApiKey : TOnEtherscanApiKey;
     FOnSignatureRequest: TOnSignatureRequest;
+    function GetJsonRpc: IJsonRpc;
+    function GetPubSub : IPubSub;
   public
+    function  ETHERSCAN_API_KEY: string;
     function  GetGasStationInfo: TGasStationInfo;
     procedure CanSignTransaction(from, &to: TAddress;
       gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
 
-    class function New(const aURL: string): TWeb3; overload; static;
-    class function New(aChain: TChain; const aURL: string): TWeb3; overload; static;
+    constructor Create(
+      const aURL: string;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
+      aChain    : TChain;
+      const aURL: string;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
+      const aURL: string;
+      aJsonRpc  : IJsonRpc;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
+      aChain    : TChain;
+      const aURL: string;
+      aProtocol : IProtocol;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
 
-    property URL  : string read FURL;
-    property Chain: TChain read FChain;
-    property OnGasStationInfo: TOnGasStationInfo
-                               read FOnGasStationInfo write FOnGasStationInfo;
-    property OnSignatureRequest: TOnSignatureRequest
-                                 read FOnSignatureRequest write FOnSignatureRequest;
+    property Chain   : TChain    read FChain;
+    property URL     : string    read FURL;
+    property JsonRpc : IJsonRpc  read GetJsonRpc;
+    property PubSub  : IPubSub   read GetPubSub;
+    property Security: TSecurity read FSecurity;
+
+    property OnGasStationInfo  : TOnGasStationInfo   read FOnGasStationInfo   write FOnGasStationInfo;
+    property OnEtherscanApiKey : TOnEtherscanApiKey  read FOnEtherscanApiKey  write FOnEtherscanApiKey;
+    property OnSignatureRequest: TOnSignatureRequest read FOnSignatureRequest write FOnSignatureRequest;
   end;
+
+function Now: TUnixDateTime;
 
 implementation
 
 // https://www.ideasawakened.com/post/writing-cross-framework-code-in-delphi
 uses
   System.Classes,
-  System.UITypes,
+  System.DateUtils,
   System.TypInfo,
+  System.UITypes,
 {$IFDEF FMX}
   FMX.Dialogs,
 {$ELSE}
   VCL.Dialogs,
 {$ENDIF}
+  web3.eth.chainlink,
   web3.eth.types,
   web3.eth.utils,
-  web3.eth.infura;
+  web3.json.rpc.https;
+
+function Now: TUnixDateTime;
+begin
+  Result := DateTimeToUnix(System.SysUtils.Now, False);
+end;
+
+{ TChainHelper }
+
+function TChainHelper.Id: Integer;
+const
+  // https://chainid.network/
+  CHAIN_ID: array[TChain] of Integer = (
+    1,  // Mainnet
+    3,  // Ropsten
+    4,  // Rinkeby
+    5,  // Goerli
+    10, // Optimism
+    30, // RSK_main_net
+    31, // RSK_test_net
+    42, // Kovan
+    56, // BSC_main_net
+    97, // BSC_test_net
+    100 // xDai
+  );
+begin
+  Result := CHAIN_ID[Self];
+end;
+
+function TChainHelper.Name: string;
+begin
+  Result := GetEnumName(TypeInfo(TChain), Integer(Self)).Replace('_', ' ');
+end;
+
+function TChainHelper.Testnet: Boolean;
+begin
+  Result := Self in [Ropsten, Rinkeby, Goerli, RSK_test_net, Kovan, BSC_test_net];
+end;
+
+function TChainHelper.Ethereum: Boolean;
+begin
+  Result := Self in [Mainnet, Ropsten, Rinkeby, Goerli, Kovan];
+end;
+
+function TChainHelper.BlockExplorerURL: string;
+const
+  BLOCK_EXPLORER_URL: array[TChain] of string = (
+    'https://etherscan.io',            // Mainnet
+    'https://ropsten.etherscan.io',    // Ropsten
+    'https://rinkeby.etherscan.io',    // Rinkeby
+    'https://goerli.etherscan.io',     // Goerli
+    'https://mainnet.optimism.io',     // Optimism
+    'https://explorer.rsk.co',         // RSK_main_net
+    'https://explorer.testnet.rsk.co', // RSK_test_net
+    'https://kovan.etherscan.io',      // Kovan
+    'https://bscscan.com',             // BSC_main_net
+    'https://testnet.bscscan.com',     // BSC_test_net
+    'https://blockscout.com/poa/xdai'  // xDai
+  );
+begin
+  Result := BLOCK_EXPLORER_URL[Self];
+end;
 
 { TError }
 
@@ -159,11 +291,25 @@ begin
   inherited Create('Not implemented');
 end;
 
+{ TGasStationInfo }
+
+class function TGasStationInfo.Average: TGasStationInfo;
+begin
+  Result.Speed := TGasPrice.Average;
+end;
+
 { TWeb3 }
+
+function TWeb3.ETHERSCAN_API_KEY: string;
+begin
+  Result := '';
+  if Assigned(FOnEtherscanApiKey) then
+    FOnEtherscanApiKey(Result);
+end;
 
 function TWeb3.GetGasStationInfo: TGasStationInfo;
 begin
-  Result.Speed := Average;
+  Result := TGasStationInfo.Average;
   if Assigned(FOnGasStationInfo) then
     FOnGasStationInfo(Result);
 end;
@@ -207,7 +353,7 @@ begin
         callback(False, err);
         EXIT;
       end;
-      web3.eth.infura.ticker('ethusd', procedure(ticker: ITicker; err: IError)
+      web3.eth.chainlink.eth_usd(client, procedure(price: Extended; err: IError)
       begin
         if Assigned(err) then
         begin
@@ -217,9 +363,16 @@ begin
         TThread.Synchronize(nil, procedure
         begin
 {$WARN SYMBOL_DEPRECATED OFF}
-          modalResult := MessageDlg(Format(RS_SIGNATURE_REQUEST, [chainName,
-            from, &to, fromWei(gasPrice, gwei, 1), estimatedGas.ToString,
-            EthToFloat(fromWei(estimatedGas * gasPrice, ether)) * ticker.Ask]),
+          modalResult := MessageDlg(Format(
+            RS_SIGNATURE_REQUEST,
+            [
+              chainName,                                                  // Network
+              from,                                                       // From
+              &to,                                                        // To
+              fromWei(gasPrice, gwei, 1),                                 // Gas price (gwei)
+              estimatedGas.ToString,                                      // Estimated gas (units)
+              EthToFloat(fromWei(estimatedGas * gasPrice, ether)) * price // Gas fee
+            ]),
             TMsgDlgType.mtConfirmation, mbYesNo, 0, TMsgDlgBtn.mbNo
           );
 {$WARN SYMBOL_DEPRECATED DEFAULT}
@@ -230,15 +383,47 @@ begin
   end, True);
 end;
 
-class function TWeb3.New(const aURL: string): TWeb3;
+constructor TWeb3.Create(const aURL: string; aSecurity: TSecurity);
 begin
-  Result := New(Mainnet, aURL);
+  Self.Create(Mainnet, aURL, aSecurity);
 end;
 
-class function TWeb3.New(aChain: TChain; const aURL: string): TWeb3;
+constructor TWeb3.Create(aChain: TChain; const aURL: string; aSecurity: TSecurity);
 begin
-  Result.FChain := aChain;
-  Result.FURL   := aURL;
+  Self.Create(aChain, aURL, TJsonRpcHttps.Create, aSecurity);
+end;
+
+constructor TWeb3.Create(const aURL: string; aJsonRpc: IJsonRpc; aSecurity: TSecurity);
+begin
+  Self.Create(Mainnet, aURL, aJsonRpc, aSecurity);
+end;
+
+constructor TWeb3.Create(
+  aChain    : TChain;
+  const aURL: string;
+  aProtocol : IProtocol;
+  aSecurity : TSecurity);
+begin
+  Self.FChain    := aChain;
+  Self.FURL      := aURL;
+  Self.FProtocol := aProtocol;
+  Self.FSecurity := aSecurity;
+end;
+
+function TWeb3.GetJsonRpc: IJsonRpc;
+begin
+  Result := nil;
+  if Assigned(FProtocol) then
+    if not Supports(FProtocol, IJsonRpc, Result) then
+      Result := nil;
+end;
+
+function TWeb3.GetPubSub: IPubSub;
+begin
+  Result := nil;
+  if Assigned(FProtocol) then
+    if not Supports(FProtocol, IPubSub, Result) then
+      Result := nil;
 end;
 
 end.

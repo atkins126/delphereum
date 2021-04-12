@@ -23,7 +23,7 @@ uses
   Velthuis.BigIntegers,
   // HashLib4Pascal
   HlpSHA3,
-  // Web3
+  // web3
   web3,
   web3.eth.types,
   web3.json,
@@ -33,6 +33,7 @@ type
   TToHex = set of (padToEven, zeroAs0x0);
 
 function toHex(const buf: TBytes): string; overload;
+function toHex(const bytes32: TBytes32): string; overload;
 function toHex(const prefix: string; const buf: TBytes): string; overload;
 function toHex(const buf: TBytes; offset, len: Integer): string; overload;
 function toHex(const prefix: string; const buf: TBytes; offset, len: Integer): string; overload;
@@ -57,6 +58,15 @@ implementation
 
 function toHex(const buf: TBytes): string;
 begin
+  Result := toHex('0x', buf);
+end;
+
+function toHex(const bytes32: TBytes32): string;
+var
+  buf: TBytes;
+begin
+  SetLength(buf, 32);
+  Move(bytes32, buf[0], 32);
   Result := toHex('0x', buf);
 end;
 
@@ -215,7 +225,7 @@ end;
 
 procedure sha3(client: TWeb3; const hex: string; callback: TAsyncString);
 begin
-  web3.json.rpc.send(client.URL, 'web3_sha3', [hex], procedure(resp: TJsonObject; err: IError)
+  client.JsonRpc.Send(client.URL, client.Security, 'web3_sha3', [hex], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback('', err)

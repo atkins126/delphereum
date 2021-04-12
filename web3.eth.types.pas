@@ -17,6 +17,7 @@ interface
 
 uses
   // Delphi
+  System.Classes,
   System.JSON,
   System.Net.HttpClient,
   System.SysUtils,
@@ -28,13 +29,20 @@ uses
   web3;
 
 type
+  TBytes32 = array[0..31] of Byte;
+
+type
   TArg = record
-    Bytes: array[0..31] of Byte;
+    Inner: TBytes32;
+  public
+    function toAddress: TAddress;
     function toHex(const prefix: string): string;
+    function toInt: Integer;
     function toInt64: Int64;
     function toBigInt: BigInteger;
-    function toBool: Boolean;
+    function toBoolean: Boolean;
     function toString: string;
+    function toDateTime: TUnixDateTime;
   end;
 
 type
@@ -65,19 +73,17 @@ type
   end;
 
 type
-  TAsyncString     = reference to procedure(const str: string;   err: IError);
-  TAsyncQuantity   = reference to procedure(qty : BigInteger;    err: IError);
-  TAsyncBoolean    = reference to procedure(bool: Boolean;       err: IError);
-  TAsyncResponse   = reference to procedure(resp: IHttpResponse; err: IError);
-  TAsyncJsonObject = reference to procedure(obj : TJsonObject;   err: IError);
-  TAsyncAddress    = reference to procedure(addr: TAddress;      err: IError);
-  TAsyncTuple      = reference to procedure(tup : TTuple;        err: IError);
-  TAsyncTxHash     = reference to procedure(hash: TTxHash;       err: IError);
-  TAsyncTxn        = reference to procedure(txn : ITxn;          err: IError);
-  TAsyncReceipt    = reference to procedure(rcpt: ITxReceipt;    err: IError);
-  TAsyncReceiptEx  = reference to procedure(rcpt: ITxReceipt;
-                                            qty : BigInteger;    err: IError);
-  TAsyncFloat      = reference to procedure(val : Extended;      err: IError);
+  TAsyncString    = reference to procedure(const str: string; err : IError);
+  TAsyncQuantity  = reference to procedure(qty  : BigInteger; err : IError);
+  TAsyncBoolean   = reference to procedure(bool : Boolean;    err : IError);
+  TAsyncAddress   = reference to procedure(addr : TAddress;   err : IError);
+  TAsyncArg       = reference to procedure(arg  : TArg;       next: TProc);
+  TAsyncTuple     = reference to procedure(tup  : TTuple;     err : IError);
+  TAsyncTxHash    = reference to procedure(hash : TTxHash;    err : IError);
+  TAsyncTxn       = reference to procedure(txn  : ITxn;       err : IError);
+  TAsyncReceipt   = reference to procedure(rcpt : ITxReceipt; err : IError);
+  TAsyncReceiptEx = reference to procedure(rcpt : ITxReceipt; qty : BigInteger; err: IError);
+  TAsyncFloat     = reference to procedure(value: Extended;   err : IError);
 
 type
   TAddressHelper = record helper for TAddress
@@ -85,6 +91,7 @@ type
     class function  New(const hex: string): TAddress; overload; static;
     class procedure New(client: TWeb3; const name: string; callback: TAsyncAddress); overload; static;
     procedure ToString(client: TWeb3; callback: TAsyncString; abbreviated: Boolean = False);
+    function  Abbreviated: string;
     function  IsZero: Boolean;
   end;
 
@@ -93,15 +100,20 @@ type
     class function Generate: TPrivateKey; static;
     class function New(params: IECPrivateKeyParameters): TPrivateKey; static;
     function Parameters: IECPrivateKeyParameters;
-    function Address: TAddress;
+    procedure Address(callback: TAsyncAddress);
   end;
 
 type
   TTupleHelper = record helper for TTuple
-    function Add     : PArg;
-    function Last    : PArg;
+    function Add: PArg;
+    function Last: PArg;
+    function Empty: Boolean;
+    function Strings: Boolean;
+    function ToArray: TArray<TArg>;
     function ToString: string;
+    function ToStrings: TStrings;
     class function From(const hex: string): TTuple;
+    procedure Enumerate(callback: TAsyncArg; done: TProc);
   end;
 
 implementation
@@ -109,10 +121,17 @@ implementation
 uses
   // web3
   web3.crypto,
+  web3.eth,
   web3.eth.ens,
+  web3.http,
   web3.utils;
 
 { TArg }
+
+function TArg.toAddress: TAddress;
+begin
+  Result := TAddress.New(Self);
+end;
 
 function TArg.toHex(const prefix: string): string;
 const
@@ -120,16 +139,21 @@ const
 var
   I: Integer;
 begin
-  Result := StringOfChar('0', Length(Bytes) * 2);
+  Result := StringOfChar('0', Length(Inner) * 2);
   try
-    for I := 0 to Length(Bytes) - 1 do
+    for I := 0 to Length(Inner) - 1 do
     begin
-      Result[2 * I + 1] := Digits[(Bytes[I] shr 4)  + 1];
-      Result[2 * I + 2] := Digits[(Bytes[I] and $F) + 1];
+      Result[2 * I + 1] := Digits[(Inner[I] shr 4)  + 1];
+      Result[2 * I + 2] := Digits[(Inner[I] and $F) + 1];
     end;
   finally
     Result := prefix + Result;
   end;
+end;
+
+function TArg.toInt: Integer;
+begin
+  Result := StrToInt(Self.toHex('$'));
 end;
 
 function TArg.toInt64: Int64;
@@ -142,14 +166,19 @@ begin
   Result := Self.toHex('0x');
 end;
 
-function TArg.toBool: Boolean;
+function TArg.toBoolean: Boolean;
 begin
-  Result := Self.toInt64 <> 0;
+  Result := Self.toInt <> 0;
 end;
 
 function TArg.toString: string;
 begin
-  Result := TEncoding.UTF8.GetString(Bytes);
+  Result := TEncoding.UTF8.GetString(Inner);
+end;
+
+function TArg.toDateTime: TUnixDateTime;
+begin
+  Result := Self.toInt64;
 end;
 
 { TAddressHelper }
@@ -163,10 +192,11 @@ class function TAddressHelper.New(const hex: string): TAddress;
 var
   buf: TBytes;
 begin
-  if web3.utils.isHex(hex) then
-    // we're good
-  else
-    raise EWeb3.CreateFmt('%s is not a valid address.', [hex]);
+  if not web3.utils.isHex(hex) then
+  begin
+    Result := ADDRESS_ZERO;
+    EXIT;
+  end;
   buf := web3.utils.fromHex(hex);
   if Length(buf) = 20 then
     Result := TAddress(hex)
@@ -214,17 +244,23 @@ begin
 
     if abbreviated then
       if isHex(output) then
-        while Length(output) > 8 do
-          Delete(output, High(output), 1);
+        output := Copy(output, Low(output), 8);
 
     callback(output, nil);
   end);
+end;
+
+function TAddressHelper.Abbreviated: string;
+begin
+  Result := string(Self);
+  Result := Copy(Result, Low(Result), 8);
 end;
 
 function TAddressHelper.IsZero: Boolean;
 begin
   Result := (Self = '')
          or (Self = '0x')
+         or (Self = '0x0')
          or (Self = '0x0000000000000000000000000000000000000000');
 end;
 
@@ -245,15 +281,19 @@ begin
   Result := web3.crypto.privateKeyFromByteArray('ECDSA', SECP256K1, fromHex(string(Self)));
 end;
 
-function TPrivateKeyHelper.Address: TAddress;
+procedure TPrivateKeyHelper.Address(callback: TAsyncAddress);
 var
   pubKey: TBytes;
   buffer: TBytes;
 begin
-  pubKey := web3.crypto.publicKeyFromPrivateKey(Self.Parameters);
-  buffer := web3.utils.sha3(pubKey);
-  Delete(buffer, 0, 12);
-  Result := TAddress(web3.utils.toHex(buffer));
+  try
+    pubKey := web3.crypto.publicKeyFromPrivateKey(Self.Parameters);
+    buffer := web3.utils.sha3(pubKey);
+    Delete(buffer, 0, 12);
+    callback(TAddress.New(web3.utils.toHex(buffer)), nil);
+  except
+    callback(ADDRESS_ZERO, TError.Create('Private key is invalid'));
+  end;
 end;
 
 { TTupleHelper }
@@ -271,22 +311,87 @@ begin
     Result := @Self[High(Self)];
 end;
 
+function TTupleHelper.Empty: Boolean;
+begin
+  Result := (Length(Self) < 2) or (Self[1].toInt = 0);
+end;
+
+function TTupleHelper.Strings: Boolean;
+begin
+  Result := (not Self.Empty) and (Length(Self) > (Self[1].toInt + 2));
+end;
+
+function TTupleHelper.ToArray: TArray<TArg>;
+var
+  len: Integer;
+  idx: Integer;
+begin
+  Result := [];
+  if Length(Self) < 3 then
+    EXIT;
+  len := Self[1].toInt;
+  if len = 0 then
+    EXIT;
+  for idx := 2 to High(Self) do
+    Result := Result + [Self[idx]];
+  SetLength(Result, len);
+end;
+
 function TTupleHelper.ToString: string;
 var
-  arg: TArg;
+  SL: TStrings;
   len: Integer;
   idx: Integer;
 begin
   Result := '';
+
+  if Self.Empty then
+    EXIT;
+
+  if Self.Strings then
+  begin
+    SL := Self.ToStrings;
+    if Assigned(SL) then
+    try
+      Result := TrimRight(SL.Text);
+    finally
+      SL.Free;
+    end;
+    EXIT;
+  end;
+
   if Length(Self) < 3 then
     EXIT;
-  arg := Self[1];
-  len := arg.toInt64;
+  len := Self[1].toInt;
   if len = 0 then
     EXIT;
   for idx := 2 to High(Self) do
     Result := Result + Self[idx].toString;
   SetLength(Result, len);
+end;
+
+function TTupleHelper.ToStrings: TStrings;
+var
+  str: string;
+  len,
+  idx,
+  ndx: Integer;
+begin
+  Result := nil;
+  if Length(Self) < 3 then
+    EXIT;
+  len := Self[1].toInt;
+  if len = 0 then
+    EXIT;
+  Result := TStringList.Create;
+  for idx := 2 to len + 1 do
+  begin
+    ndx := Self[idx].toInt div SizeOf(TArg) + 2;
+    len := Self[ndx].toInt;
+    str := Self[ndx + 1].toString;
+    SetLength(str, len);
+    Result.Add(str);
+  end;
 end;
 
 class function TTupleHelper.From(const hex: string): TTuple;
@@ -298,10 +403,38 @@ begin
   while Length(buf) >= 32 do
   begin
     SetLength(tup, Length(tup) + 1);
-    Move(buf[0], tup[High(tup)].Bytes[0], 32);
+    Move(buf[0], tup[High(tup)].Inner[0], 32);
     Delete(buf, 0, 32);
   end;
   Result := tup;
+end;
+
+procedure TTupleHelper.Enumerate(callback: TAsyncArg; done: TProc);
+type
+  TNext = reference to procedure(idx: Integer; arr: TArray<TArg>);
+var
+  Next: TNext;
+begin
+  Next := procedure(idx: Integer; arr: TArray<TArg>)
+  begin
+    if idx >= Length(arr) then
+    begin
+      if Assigned(done) then done;
+      EXIT;
+    end;
+    callback(arr[idx], procedure
+    begin
+      Next(idx + 1, arr);
+    end);
+  end;
+
+  if Self.Empty then
+  begin
+    if Assigned(done) then done;
+    EXIT;
+  end;
+
+  Next(0, Self.ToArray);
 end;
 
 end.

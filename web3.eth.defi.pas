@@ -27,13 +27,24 @@ type
   TReserve = (DAI, USDC, USDT);
 
   TReserveHelper = record helper for TReserve
-    function  Address(chain: TChain): TAddress;
+    function  Symbol  : string;
+    function  Decimals: Extended;
+    function  Address : TAddress;
     function  Scale(amount: Extended): BigInteger;
     function  Unscale(amount: BigInteger): Extended;
-    procedure Balance(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
+    procedure BalanceOf(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
   end;
 
-type
+  TPeriod = (oneDay, threeDays, oneWeek, oneMonth);
+
+  TPeriodHelper = record helper for TPeriod
+    function Days   : Extended;
+    function Hours  : Extended;
+    function Minutes: Integer;
+    function Seconds: Integer;
+    function ToYear(value: Extended): Extended;
+  end;
+
   TLendingProtocol = class abstract
   public
     class function Name: string; virtual; abstract;
@@ -44,6 +55,7 @@ type
     class procedure APY(
       client  : TWeb3;
       reserve : TReserve;
+      period  : TPeriod;
       callback: TAsyncFloat); virtual; abstract;
     // Deposits an underlying asset into the lending pool.
     class procedure Deposit(
@@ -81,69 +93,82 @@ uses
   // Delphi
   System.TypInfo;
 
-const
-  RESERVE_ADDRESS: array[TReserve] of array[TChain] of TAddress = (
-    ( // DAI
-      '0x6b175474e89094c44da98b954eedeac495271d0f',  // Mainnet
-      '',                                            // Ropsten
-      '',                                            // Rinkeby
-      '',                                            // Goerli
-      '',                                            // RSK_main_net
-      '',                                            // RSK_test_net
-      '',                                            // Kovan
-      '0x6b175474e89094c44da98b954eedeac495271d0f'), // Ganache
-    ( // USDC
-      '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',  // Mainnet
-      '',                                            // Ropsten
-      '',                                            // Rinkeby
-      '',                                            // Goerli
-      '',                                            // RSK_main_net
-      '',                                            // RSK_test_net
-      '',                                            // Kovan
-      '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'), // Ganache
-    ( // USDT
-      '0xdac17f958d2ee523a2206206994597c13d831ec7',  // Mainnet
-      '',                                            // Ropsten
-      '',                                            // Rinkeby
-      '',                                            // Goerli
-      '',                                            // RSK_main_net
-      '',                                            // RSK_test_net
-      '',                                            // Kovan
-      '0xdac17f958d2ee523a2206206994597c13d831ec7')  // Ganache
-  );
+{ TPeriodHelper }
 
-function TReserveHelper.Address(chain: TChain): TAddress;
+function TPeriodHelper.Days: Extended;
 begin
-  Result := RESERVE_ADDRESS[Self][chain];
+  Result := 1;
+  case Self of
+    threeDays: Result := 3;
+    oneWeek  : Result := 7;
+    oneMonth : Result := 365.25 / 12;
+  end;
+end;
+
+function TPeriodHelper.Hours: Extended;
+begin
+  Result := Self.Days * 24;
+end;
+
+function TPeriodHelper.Minutes: Integer;
+begin
+  Result := Round(Self.Hours * 60);
+end;
+
+function TPeriodHelper.Seconds: Integer;
+begin
+  Result := Self.Minutes * 60;
+end;
+
+function TPeriodHelper.ToYear(value: Extended): Extended;
+begin
+  Result := value * (365.25 / Self.Days);
+end;
+
+{ TReserveHelper }
+
+function TReserveHelper.Symbol: string;
+begin
+  Result := GetEnumName(TypeInfo(TReserve), Ord(Self));
+end;
+
+function TReserveHelper.Decimals: Extended;
+begin
+  case Self of
+    DAI : Result := 1e18;
+    USDC: Result := 1e6;
+    USDT: Result := 1e6;
+  else
+    raise EWeb3.CreateFmt('%s not implemented', [Self.Symbol]);
+  end;
+end;
+
+function TReserveHelper.Address: TAddress;
+begin
+  case Self of
+    DAI : Result := '0x6b175474e89094c44da98b954eedeac495271d0f';
+    USDC: Result := '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
+    USDT: Result := '0xdac17f958d2ee523a2206206994597c13d831ec7';
+  else
+    raise EWeb3.CreateFmt('%s not implemented', [Self.Symbol]);
+  end;
 end;
 
 function TReserveHelper.Scale(amount: Extended): BigInteger;
 begin
-  case Self of
-    DAI : Result := BigInteger.Create(amount * 1e18);
-    USDC: Result := BigInteger.Create(amount * 1e6);
-    USDT: Result := BigInteger.Create(amount * 1e6);
-  else
-    raise EWeb3.CreateFmt('%s not implemented', [GetEnumName(TypeInfo(TReserve), Ord(Self))]);
-  end;
+  Result := BigInteger.Create(amount * Self.Decimals);
 end;
 
 function TReserveHelper.Unscale(amount: BigInteger): Extended;
 begin
-  case Self of
-    DAI : Result := amount.AsExtended / 1e18;
-    USDC: Result := amount.AsExtended / 1e6;
-    USDT: Result := amount.AsExtended / 1e6;
-  else
-    raise EWeb3.CreateFmt('%s not implemented', [GetEnumName(TypeInfo(TReserve), Ord(Self))]);
-  end;
+  Result := amount.AsExtended / Self.Decimals;
 end;
 
-procedure TReserveHelper.Balance(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
+procedure TReserveHelper.BalanceOf(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
 var
   erc20: TERC20;
 begin
-  erc20 := TERC20.Create(client, Address(client.Chain));
+  erc20 := TERC20.Create(client, Self.Address);
   try
     erc20.BalanceOf(owner, callback);
   finally

@@ -63,6 +63,7 @@ type
     class procedure APY(
       client  : TWeb3;
       reserve : TReserve;
+      _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
       client  : TWeb3;
@@ -142,6 +143,11 @@ type
 
 implementation
 
+uses
+  // Delphi
+  System.Math,
+  System.TypInfo;
+
 type
   TiTokenClass = class of TiToken;
 
@@ -211,10 +217,10 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) * (price.AsExtended / 1e18)), nil);
+        callback(BigInteger.Create(amount.AsExtended * (price.AsExtended / 1e18)), nil);
     end);
   finally
-    iToken.free;
+    iToken.Free;
   end;
 end;
 
@@ -234,10 +240,10 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) / (price.AsExtended / 1e18)), nil);
+        callback(BigInteger.Create(amount.AsExtended / (price.AsExtended / 1e18)), nil);
     end);
   finally
-    iToken.free;
+    iToken.Free;
   end;
 end;
 
@@ -248,14 +254,15 @@ end;
 
 class function TFulcrum.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  if reserve = DAI then
-    Result := chain in [Mainnet, Ganache, Kovan]
-  else
-    Result := chain in [Mainnet, Ganache];
+  Result := (chain in [Mainnet, Kovan]) or ((chain = BSC_main_net) and (reserve = USDT));
 end;
 
 // Returns the annual yield as a percentage with 4 decimals.
-class procedure TFulcrum.APY(client: TWeb3; reserve: TReserve; callback: TAsyncFloat);
+class procedure TFulcrum.APY(
+  client  : TWeb3;
+  reserve : TReserve;
+  _period : TPeriod;
+  callback: TAsyncFloat);
 var
   iToken: TiToken;
 begin
@@ -306,15 +313,47 @@ class procedure TFulcrum.Balance(
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
-var
-  iToken: TiToken;
 begin
-  iToken := iTokenClass[reserve].Create(client);
-  try
-    iToken.AssetBalanceOf(owner, callback);
-  finally
-    iToken.Free;
+  var BalanceOf := procedure(callback: TAsyncQuantity)
+  begin
+    var iToken := iTokenClass[reserve].Create(client);
+    try
+      iToken.AssetBalanceOf(owner, callback);
+    finally
+      iToken.Free;
+    end;
   end;
+
+  var Decimals := procedure(callback: TAsyncQuantity)
+  begin
+    var iToken := iTokenClass[reserve].Create(client);
+    try
+      iToken.Decimals(callback);
+    finally
+      iToken.Free;
+    end;
+  end;
+
+  BalanceOf(procedure(balance: BigInteger; err: IError)
+  begin
+    if Assigned(err) then
+    begin
+      callback(balance, err);
+      EXIT;
+    end;
+    Decimals(procedure(decimals: BigInteger; err: IError)
+    begin
+      if Assigned(err) then
+      begin
+        callback(balance, err);
+        EXIT;
+      end;
+      if reserve.Decimals = Power(10, decimals.AsInteger) then
+        callback(balance, err)
+      else
+        callback(reserve.Scale(balance.AsExtended / Power(10, decimals.AsInteger)), err);
+    end);
+  end);
 end;
 
 // Redeems your balance of iTokens for the underlying asset.
@@ -326,35 +365,47 @@ class procedure TFulcrum.Withdraw(
 var
   iToken: TiToken;
 begin
-  iToken := iTokenClass[reserve].Create(client);
-  if Assigned(iToken) then
+  from.Address(procedure(addr: TAddress; err: IError)
   begin
-    // step #1: get the iToken balance
-    iToken.BalanceOf(from.Address, procedure(amount: BigInteger; err: IError)
+    if Assigned(err) then
     begin
-      try
-        if Assigned(err) then
-          callback(nil, 0, err)
-        else
+      callback(nil, 0, err);
+      EXIT;
+    end;
+    iToken := iTokenClass[reserve].Create(client);
+    if Assigned(iToken) then
+    begin
+      // step #1: get the iToken balance
+      iToken.BalanceOf(addr, procedure(amount: BigInteger; err: IError)
+      begin
+        try
+          if Assigned(err) then
+          begin
+            callback(nil, 0, err);
+            EXIT;
+          end;
           // step #2: redeem iToken-amount in exchange for the underlying asset
           iToken.Burn(from, amount, procedure(rcpt: ITxReceipt; err: IError)
           begin
             if Assigned(err) then
-              callback(nil, 0, err)
-            else
-              TokenToUnderlying(client, reserve, amount, procedure(output: BigInteger; err: IError)
-              begin
-                if Assigned(err) then
-                  callback(rcpt, 0, err)
-                else
-                  callback(rcpt, output, nil);
-              end);
+            begin
+              callback(nil, 0, err);
+              EXIT;
+            end;
+            TokenToUnderlying(client, reserve, amount, procedure(output: BigInteger; err: IError)
+            begin
+              if Assigned(err) then
+                callback(rcpt, 0, err)
+              else
+                callback(rcpt, output, nil);
+            end);
           end);
-      finally
-        iToken.Free;
-      end;
-    end);
-  end;
+        finally
+          iToken.Free;
+        end;
+      end);
+    end;
+  end);
 end;
 
 class procedure TFulcrum.WithdrawEx(
@@ -408,19 +459,19 @@ begin
     if log.isEvent('Mint(address,uint256,uint256,uint256)') then
       // emitted upon a successful Mint
       FOnMint(Self,
-              TAddress.New(log.Topic[1]),
-              log.Data[0].toBigInt,
-              log.Data[1].toBigInt,
-              log.Data[2].toBigInt);
+              log.Topic[1].toAddress, // minter
+              log.Data[0].toBigInt,   // token amount
+              log.Data[1].toBigInt,   // asset amount
+              log.Data[2].toBigInt);  // price
 
   if Assigned(FOnBurn) then
     if log.isEvent('Burn(address,uint256,uint256,uint256)') then
       // emitted upon a successful Burn
       FOnBurn(Self,
-              TAddress.New(log.Topic[1]),
-              log.Data[0].toBigInt,
-              log.Data[1].toBigInt,
-              log.Data[2].toBigInt);
+              log.Topic[1].toAddress, // burner
+              log.Data[0].toBigInt,   // token amount
+              log.Data[1].toBigInt,   // asset amount
+              log.Data[2].toBigInt);  // price
 end;
 
 procedure TiToken.SetOnMint(Value: TOnMint);
@@ -439,9 +490,15 @@ end;
 // The supplier will receive the asset proceeds.
 procedure TiToken.Burn(from: TPrivateKey; amount: BigInteger; callback: TAsyncReceipt);
 begin
-  web3.eth.write(
-    Client, from, Contract,
-    'burn(address,uint256)', [from.Address, web3.utils.toHex(amount)], callback);
+  from.Address(procedure(addr: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.write(
+        Client, from, Contract,
+        'burn(address,uint256)', [addr, web3.utils.toHex(amount)], callback);
+  end);
 end;
 
 // Called to deposit assets to the iToken, which in turn mints iTokens to the lender’s wallet at the current tokenPrice() rate.
@@ -449,9 +506,15 @@ end;
 // The supplier will receive the minted iTokens.
 procedure TiToken.Mint(from: TPrivateKey; amount: BigInteger; callback: TAsyncReceipt);
 begin
-  web3.eth.write(
-    Client, from, Contract,
-    'mint(address,uint256)', [from.Address, web3.utils.toHex(amount)], callback);
+  from.Address(procedure(addr: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.write(
+        Client, from, Contract,
+        'mint(address,uint256)', [addr, web3.utils.toHex(amount)], callback);
+  end);
 end;
 
 // Returns the user’s balance of the underlying asset, scaled by 1e18
@@ -467,9 +530,9 @@ begin
   web3.eth.call(Client, Contract, 'loanTokenAddress()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback('', err)
+      callback(ADDRESS_ZERO, err)
     else
-      callback(TAddress.New(hex), nil)
+      callback(TAddress.New(hex), nil);
   end);
 end;
 
@@ -490,18 +553,13 @@ end;
 constructor TiDAI.Create(aClient: TWeb3);
 begin
   // https://bzx.network/itokens
-  case aClient.Chain of
-    Mainnet, Ganache:
-      inherited Create(aClient, '0x493c57c4763932315a328269e1adad09653b9081');
-    Ropsten:
-      raise EFulcrum.Create('iDAI is not supported on Ropsten');
-    Rinkeby:
-      raise EFulcrum.Create('iDAI is not supported on Rinkeby');
-    Goerli:
-      raise EFulcrum.Create('iDAI is not supported on Goerli');
-    Kovan:
-      inherited Create(aClient, '0x6c1e2b0f67e00c06c8e2be7dc681ab785163ff4d');
-  end;
+  if aClient.Chain = Mainnet then
+    inherited Create(aClient, '0x6b093998d36f2c7f0cc359441fbb24cc629d5ff0')
+  else
+    if aClient.Chain = Kovan then
+      inherited Create(aClient, '0x73d0B4834Ba4ADa053d8282c02305eCdAC2304f0')
+    else
+      raise EFulcrum.CreateFmt('iDAI is not deployed on %s', [GetEnumName(TypeInfo(TChain), Integer(aClient.Chain))]);
 end;
 
 { TiUSDC }
@@ -509,18 +567,13 @@ end;
 constructor TiUSDC.Create(aClient: TWeb3);
 begin
   // https://bzx.network/itokens
-  case aClient.Chain of
-    Mainnet, Ganache:
-      inherited Create(aClient, '0xF013406A0B1d544238083DF0B93ad0d2cBE0f65f');
-    Ropsten:
-      raise EFulcrum.Create('iUSDC is not supported on Ropsten');
-    Rinkeby:
-      raise EFulcrum.Create('iUSDC is not supported on Rinkeby');
-    Goerli:
-      raise EFulcrum.Create('iUSDC is not supported on Goerli');
-    Kovan:
-      raise EFulcrum.Create('iUSDC is not supported on Kovan');
-  end;
+  if aClient.Chain = Mainnet then
+    inherited Create(aClient, '0x32e4c68b3a4a813b710595aeba7f6b7604ab9c15')
+  else
+    if aClient.Chain = Kovan then
+      inherited Create(aClient, '0xaaC9822F31e5Aefb32bC228DcF259F23B49B9855')
+    else
+      raise EFulcrum.CreateFmt('iUSDC is not deployed on %s', [GetEnumName(TypeInfo(TChain), Integer(aClient.Chain))]);
 end;
 
 { TiUSDT }
@@ -528,18 +581,16 @@ end;
 constructor TiUSDT.Create(aClient: TWeb3);
 begin
   // https://bzx.network/itokens
-  case aClient.Chain of
-    Mainnet, Ganache:
-      inherited Create(aClient, '0x8326645f3aa6de6420102fdb7da9e3a91855045b');
-    Ropsten:
-      raise EFulcrum.Create('iUSDT is not supported on Ropsten');
-    Rinkeby:
-      raise EFulcrum.Create('iUSDT is not supported on Rinkeby');
-    Goerli:
-      raise EFulcrum.Create('iUSDT is not supported on Goerli');
-    Kovan:
-      raise EFulcrum.Create('iUSDT is not supported on Kovan');
-  end;
+  if aClient.Chain = Mainnet then
+    inherited Create(aClient, '0x7e9997a38a439b2be7ed9c9c4628391d3e055d48')
+  else
+    if aClient.Chain = Kovan then
+      inherited Create(aClient, '0x6b9F03e05423cC8D00617497890C0872FF33d4E8')
+    else
+      if aClient.Chain = BSC_main_net then
+        inherited Create(aClient, '0xf326b42a237086f1de4e7d68f2d2456fc787bc01')
+      else
+        raise EFulcrum.CreateFmt('iUSDT is not deployed on %s', [GetEnumName(TypeInfo(TChain), Integer(aClient.Chain))]);
 end;
 
 end.

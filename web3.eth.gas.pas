@@ -19,7 +19,7 @@ uses
   // Delphi
   System.JSON,
   System.SysUtils,
-  // Web3
+  // web3
   web3,
   web3.eth,
   web3.eth.abi,
@@ -48,13 +48,19 @@ implementation
 
 procedure getGasPrice(client: TWeb3; callback: TAsyncQuantity);
 var
-  gasInfo: TGasStationInfo;
+  info: TGasStationInfo;
 begin
-  gasInfo := client.GetGasStationInfo;
+  info := client.GetGasStationInfo;
 
-  if (gasInfo.apiKey = '') and (gasInfo.Speed = Average) then
+  if info.Custom > 0 then
   begin
-    web3.json.rpc.send(client.URL, 'eth_gasPrice', [], procedure(resp: TJsonObject; err: IError)
+    callback(info.Custom, nil);
+    EXIT;
+  end;
+
+  if (info.apiKey = '') and (info.Speed = Average) then
+  begin
+    client.JsonRpc.Send(client.URL, client.Security, 'eth_gasPrice', [], procedure(resp: TJsonObject; err: IError)
     begin
       if Assigned(err) then
         callback(0, err)
@@ -64,12 +70,14 @@ begin
     EXIT;
   end;
 
-  web3.eth.gas.station.getGasPrice(gasInfo.apiKey, procedure(price: IGasPrice; err: IError)
+  web3.eth.gas.station.getGasPrice(info.apiKey, procedure(price: IGasPrice; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
     else
-      case gasInfo.Speed of
+      case info.Speed of
+        Outbid : callback(price.Outbid,  nil);
+        Fastest: callback(price.Fastest, nil);
         Fast   : callback(price.Fast,    nil);
         Average: callback(price.Average, nil);
         SafeLow: callback(price.SafeLow, nil);
@@ -104,10 +112,10 @@ begin
       web3.json.quoteString(string(&to), '"'),
       web3.json.quoteString(data, '"')
     ]
-  ));
+  )) as TJsonObject;
   try
     // estimate how much gas is necessary for the transaction to complete (without creating a transaction on the blockchain)
-    web3.json.rpc.send(client.URL, 'eth_estimateGas', [obj], procedure(resp: TJsonObject; err: IError)
+    client.JsonRpc.Send(client.URL, client.Security, 'eth_estimateGas', [obj], procedure(resp: TJsonObject; err: IError)
     begin
       if Assigned(err) then
       begin
