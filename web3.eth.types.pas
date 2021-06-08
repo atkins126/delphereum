@@ -77,7 +77,7 @@ type
   TAsyncQuantity  = reference to procedure(qty  : BigInteger; err : IError);
   TAsyncBoolean   = reference to procedure(bool : Boolean;    err : IError);
   TAsyncAddress   = reference to procedure(addr : TAddress;   err : IError);
-  TAsyncBytes     = reference to procedure(bytes: TBytes32;   err : IError);
+  TAsyncBytes32   = reference to procedure(bytes: TBytes32;   err : IError);
   TAsyncArg       = reference to procedure(arg  : TArg;       next: TProc);
   TAsyncTuple     = reference to procedure(tup  : TTuple;     err : IError);
   TAsyncTxHash    = reference to procedure(hash : TTxHash;    err : IError);
@@ -90,8 +90,8 @@ type
   TAddressHelper = record helper for TAddress
     class function  New(arg: TArg): TAddress; overload; static;
     class function  New(const hex: string): TAddress; overload; static;
-    class procedure New(client: TWeb3; const name: string; callback: TAsyncAddress); overload; static;
-    procedure ToString(client: TWeb3; callback: TAsyncString; abbreviated: Boolean = False);
+    class procedure New(client: IWeb3; const name: string; callback: TAsyncAddress); overload; static;
+    procedure ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean = False);
     function  Abbreviated: string;
     function  IsZero: Boolean;
   end;
@@ -213,7 +213,7 @@ begin
       Result := TAddress(web3.utils.toHex(Copy(buf, Length(buf) - 20, 20)));
 end;
 
-class procedure TAddressHelper.New(client: TWeb3; const name: string; callback: TAsyncAddress);
+class procedure TAddressHelper.New(client: IWeb3; const name: string; callback: TAsyncAddress);
 begin
   if web3.utils.isHex(name) then
     callback(New(name), nil)
@@ -221,7 +221,7 @@ begin
     web3.eth.ens.addr(client, name, callback);
 end;
 
-procedure TAddressHelper.ToString(client: TWeb3; callback: TAsyncString; abbreviated: Boolean);
+procedure TAddressHelper.ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean);
 var
   addr: TAddress;
 begin

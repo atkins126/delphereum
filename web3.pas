@@ -27,20 +27,21 @@ type
     Mainnet,
     Ropsten,
     Rinkeby,
+    Kovan,
     Goerli,
     Optimism,
+    Optimism_test_net,
     RSK_main_net,
     RSK_test_net,
-    Kovan,
     BSC_main_net,
     BSC_test_net,
-    xDai
+    xDai,
+    Arbitrum
   );
 
   TChainHelper = record helper for TChain
     function Id: Integer;
     function Name: string;
-    function Testnet: Boolean;
     function Ethereum: Boolean;
     function BlockExplorerURL: string;
   end;
@@ -51,7 +52,7 @@ type
   TWei          = BigInteger;
   TTxHash       = string[66];
   TUnixDateTime = Int64;
-  TProtocol     = (HTTPS, WebSockets);
+  TProtocol     = (HTTPS, WebSocket);
   TSecurity     = (Automatic, TLS_10, TLS_11, TLS_12, TLS_13);
 
   EWeb3 = class(Exception);
@@ -100,36 +101,39 @@ type
   TAsyncJsonObject = reference to procedure(resp: TJsonObject; err: IError);
   TAsyncJsonArray  = reference to procedure(resp: TJsonArray;  err: IError);
 
-  IProtocol = interface
-  ['{DC851A2E-D172-415C-9FD0-34977FD8F232}']
-  end;
-
-  IJsonRpc = interface(IProtocol)
+  IJsonRpc = interface
   ['{79B99FD7-3000-4839-96B4-6C779C25AD0C}']
-    function Send(
+    function Call(
       const URL   : string;
-      security    : TSecurity;
       const method: string;
       args        : array of const): TJsonObject; overload;
-    procedure Send(
+    procedure Call(
       const URL   : string;
-      security    : TSecurity;
       const method: string;
       args        : array of const;
       callback    : TAsyncJsonObject); overload;
   end;
 
-  IPubSub = interface(IJsonRpc)
+  IPubSub = interface
   ['{D63B43A1-60E4-4107-8B14-925399A4850A}']
+    function Call(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const): TJsonObject; overload;
+    procedure Call(
+      const URL   : string;
+      security    : TSecurity;
+      const method: string;
+      args        : array of const;
+      callback    : TAsyncJsonObject); overload;
+
     procedure Subscribe(const subscription: string; callback: TAsyncJsonObject);
     procedure Unsubscribe(const subscription: string);
     procedure Disconnect;
 
-    procedure SetOnError(Value: TAsyncError);
-    procedure SetOnDisconnect(Value: TProc);
-
-    property OnError: TAsyncError write SetOnError;
-    property OnDisconnect: TProc write SetOnDisconnect;
+    function OnError(callback: TAsyncError): IPubSub;
+    function OnDisconnect(callback: TProc): IPubSub;
   end;
 
   ISignatureDenied = interface(IError)
@@ -141,49 +145,88 @@ type
   TOnSignatureRequest     = reference to procedure(from, &to: TAddress;
                             gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
 
-  TWeb3 = record
+  IWeb3 = interface
+  ['{D4C1A132-2296-40C0-B6FB-6B326EFB8A26}']
+    function Chain: TChain;
+    function URL  : string;
+
+    function  ETHERSCAN_API_KEY: string;
+    function  GetGasStationInfo: TGasStationInfo;
+    procedure CanSignTransaction(from, &to: TAddress; gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
+
+    function  Call(const method: string; args: array of const): TJsonObject; overload;
+    procedure Call(const method: string; args: array of const; callback: TAsyncJsonObject); overload;
+  end;
+
+  TCustomWeb3 = class abstract(TInterfacedObject, IWeb3)
   private
-    FChain   : TChain;
-    FURL     : string;
-    FProtocol: IProtocol;
-    FSecurity: TSecurity;
+    FChain: TChain;
+    FURL  : string;
+
     FOnGasStationInfo  : TOnGasStationInfo;
     FOnEtherscanApiKey : TOnEtherscanApiKey;
     FOnSignatureRequest: TOnSignatureRequest;
-    function GetJsonRpc: IJsonRpc;
-    function GetPubSub : IPubSub;
   public
+    function Chain: TChain;
+    function URL  : string;
+
     function  ETHERSCAN_API_KEY: string;
     function  GetGasStationInfo: TGasStationInfo;
-    procedure CanSignTransaction(from, &to: TAddress;
-      gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
+    procedure CanSignTransaction(from, &to: TAddress; gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
 
-    constructor Create(
-      const aURL: string;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
-    constructor Create(
-      aChain    : TChain;
-      const aURL: string;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
-    constructor Create(
-      const aURL: string;
-      aJsonRpc  : IJsonRpc;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
-    constructor Create(
-      aChain    : TChain;
-      const aURL: string;
-      aProtocol : IProtocol;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
-
-    property Chain   : TChain    read FChain;
-    property URL     : string    read FURL;
-    property JsonRpc : IJsonRpc  read GetJsonRpc;
-    property PubSub  : IPubSub   read GetPubSub;
-    property Security: TSecurity read FSecurity;
+    function  Call(const method: string; args: array of const): TJsonObject; overload; virtual; abstract;
+    procedure Call(const method: string; args: array of const; callback: TAsyncJsonObject); overload; virtual; abstract;
 
     property OnGasStationInfo  : TOnGasStationInfo   read FOnGasStationInfo   write FOnGasStationInfo;
     property OnEtherscanApiKey : TOnEtherscanApiKey  read FOnEtherscanApiKey  write FOnEtherscanApiKey;
     property OnSignatureRequest: TOnSignatureRequest read FOnSignatureRequest write FOnSignatureRequest;
+  end;
+
+  TWeb3 = class(TCustomWeb3)
+  private
+    FProtocol: IJsonRpc;
+  public
+    constructor Create(const aURL: string); overload;
+    constructor Create(aChain: TChain; const aURL: string); overload;
+    constructor Create(aChain: TChain; const aURL: string; aProtocol: IJsonRpc); overload;
+
+    function  Call(const method: string; args: array of const): TJsonObject; overload; override;
+    procedure Call(const method: string; args: array of const; callback: TAsyncJsonObject); overload; override;
+  end;
+
+  IWeb3Ex = interface(IWeb3)
+  ['{DD13EBE0-3E4E-49B8-A41D-B58C7DD0322F}']
+    procedure Subscribe(const subscription: string; callback: TAsyncJsonObject);
+    procedure Unsubscribe(const subscription: string);
+    procedure Disconnect;
+    function OnError(callback: TAsyncError): IWeb3Ex;
+    function OnDisconnect(callback: TProc): IWeb3Ex;
+  end;
+
+  TWeb3Ex = class(TCustomWeb3, IWeb3Ex)
+  private
+    FProtocol: IPubSub;
+    FSecurity: TSecurity;
+  public
+    constructor Create(
+      const aURL: string;
+      aProtocol : IPubSub;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
+      aChain    : TChain;
+      const aURL: string;
+      aProtocol : IPubSub;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+
+    function  Call(const method: string; args: array of const): TJsonObject; overload; override;
+    procedure Call(const method: string; args: array of const; callback: TAsyncJsonObject); overload; override;
+
+    procedure Subscribe(const subscription: string; callback: TAsyncJsonObject);
+    procedure Unsubscribe(const subscription: string);
+    procedure Disconnect;
+
+    function OnError(callback: TAsyncError): IWeb3Ex;
+    function OnDisconnect(callback: TProc): IWeb3Ex;
   end;
 
 function Now: TUnixDateTime;
@@ -217,17 +260,19 @@ function TChainHelper.Id: Integer;
 const
   // https://chainid.network/
   CHAIN_ID: array[TChain] of Integer = (
-    1,  // Mainnet
-    3,  // Ropsten
-    4,  // Rinkeby
-    5,  // Goerli
-    10, // Optimism
-    30, // RSK_main_net
-    31, // RSK_test_net
-    42, // Kovan
-    56, // BSC_main_net
-    97, // BSC_test_net
-    100 // xDai
+    1,    // Mainnet
+    3,    // Ropsten
+    4,    // Rinkeby
+    42,   // Kovan
+    5,    // Goerli
+    10,   // Optimism
+    69,   // Optimism_test_net
+    30,   // RSK_main_net
+    31,   // RSK_test_net
+    56,   // BSC_main_net
+    97,   // BSC_test_net
+    100,  // xDai
+    42161 // Arbitrum
   );
 begin
   Result := CHAIN_ID[Self];
@@ -238,30 +283,27 @@ begin
   Result := GetEnumName(TypeInfo(TChain), Integer(Self)).Replace('_', ' ');
 end;
 
-function TChainHelper.Testnet: Boolean;
-begin
-  Result := Self in [Ropsten, Rinkeby, Goerli, RSK_test_net, Kovan, BSC_test_net];
-end;
-
 function TChainHelper.Ethereum: Boolean;
 begin
-  Result := Self in [Mainnet, Ropsten, Rinkeby, Goerli, Kovan];
+  Result := Self in [Mainnet, Ropsten, Rinkeby, Kovan, Goerli];
 end;
 
 function TChainHelper.BlockExplorerURL: string;
 const
   BLOCK_EXPLORER_URL: array[TChain] of string = (
-    'https://etherscan.io',            // Mainnet
-    'https://ropsten.etherscan.io',    // Ropsten
-    'https://rinkeby.etherscan.io',    // Rinkeby
-    'https://goerli.etherscan.io',     // Goerli
-    'https://mainnet.optimism.io',     // Optimism
-    'https://explorer.rsk.co',         // RSK_main_net
-    'https://explorer.testnet.rsk.co', // RSK_test_net
-    'https://kovan.etherscan.io',      // Kovan
-    'https://bscscan.com',             // BSC_main_net
-    'https://testnet.bscscan.com',     // BSC_test_net
-    'https://blockscout.com/poa/xdai'  // xDai
+    'https://etherscan.io',                  // Mainnet
+    'https://ropsten.etherscan.io',          // Ropsten
+    'https://rinkeby.etherscan.io',          // Rinkeby
+    'https://kovan.etherscan.io',            // Kovan
+    'https://goerli.etherscan.io',           // Goerli
+    'https://optimistic.etherscan.io',       // Optimism
+    'https://kovan-optimistic.etherscan.io', // Optimism_test_net
+    'https://explorer.rsk.co',               // RSK_main_net
+    'https://explorer.testnet.rsk.co',       // RSK_test_net
+    'https://bscscan.com',                   // BSC_main_net
+    'https://testnet.bscscan.com',           // BSC_test_net
+    'https://blockscout.com/poa/xdai',       // xDai
+    'https://explorer.arbitrum.io'           // Arbitrum
   );
 begin
   Result := BLOCK_EXPLORER_URL[Self];
@@ -298,23 +340,31 @@ begin
   Result.Speed := TGasPrice.Average;
 end;
 
-{ TWeb3 }
+{ TCustomWeb3 }
 
-function TWeb3.ETHERSCAN_API_KEY: string;
+function TCustomWeb3.Chain: TChain;
+begin
+  Result := Self.FChain;
+end;
+
+function TCustomWeb3.URL: string;
+begin
+  Result := Self.FURL;
+end;
+
+function TCustomWeb3.ETHERSCAN_API_KEY: string;
 begin
   Result := '';
-  if Assigned(FOnEtherscanApiKey) then
-    FOnEtherscanApiKey(Result);
+  if Assigned(FOnEtherscanApiKey) then FOnEtherscanApiKey(Result);
 end;
 
-function TWeb3.GetGasStationInfo: TGasStationInfo;
+function TCustomWeb3.GetGasStationInfo: TGasStationInfo;
 begin
   Result := TGasStationInfo.Average;
-  if Assigned(FOnGasStationInfo) then
-    FOnGasStationInfo(Result);
+  if Assigned(FOnGasStationInfo) then FOnGasStationInfo(Result);
 end;
 
-procedure TWeb3.CanSignTransaction(from, &to: TAddress;
+procedure TCustomWeb3.CanSignTransaction(from, &to: TAddress;
   gasPrice, estimatedGas: TWei; callback: TSignatureRequestResult);
 resourcestring
   RS_SIGNATURE_REQUEST = 'Your signature is being requested.'
@@ -326,7 +376,7 @@ resourcestring
               + #13#10 + 'Gas fee'   + #9 + ': $ %.2f'
         + #13#10#13#10 + 'Do you approve of this request?';
 var
-  client     : TWeb3;
+  client     : IWeb3;
   chainName  : string;
   modalResult: Integer;
 begin
@@ -383,26 +433,50 @@ begin
   end, True);
 end;
 
-constructor TWeb3.Create(const aURL: string; aSecurity: TSecurity);
+{ TWeb3 }
+
+constructor TWeb3.Create(const aURL: string);
 begin
-  Self.Create(Mainnet, aURL, aSecurity);
+  Self.Create(Mainnet, aURL);
 end;
 
-constructor TWeb3.Create(aChain: TChain; const aURL: string; aSecurity: TSecurity);
+constructor TWeb3.Create(aChain: TChain; const aURL: string);
 begin
-  Self.Create(aChain, aURL, TJsonRpcHttps.Create, aSecurity);
+  Self.Create(aChain, aURL, TJsonRpcHttps.Create);
 end;
 
-constructor TWeb3.Create(const aURL: string; aJsonRpc: IJsonRpc; aSecurity: TSecurity);
+constructor TWeb3.Create(aChain: TChain; const aURL: string; aProtocol: IJsonRpc);
 begin
-  Self.Create(Mainnet, aURL, aJsonRpc, aSecurity);
+  Self.FChain    := aChain;
+  Self.FURL      := aURL;
+  Self.FProtocol := aProtocol;
 end;
 
-constructor TWeb3.Create(
+function TWeb3.Call(const method: string; args: array of const): TJsonObject;
+begin
+  Result := Self.FProtocol.Call(Self.URL, method, args);
+end;
+
+procedure TWeb3.Call(const method: string; args: array of const; callback: TAsyncJsonObject);
+begin
+  Self.FProtocol.Call(Self.URL, method, args, callback);
+end;
+
+{ TWeb3Ex }
+
+constructor TWeb3Ex.Create(
+  const aURL: string;
+  aProtocol : IPubSub;
+  aSecurity : TSecurity = TSecurity.Automatic);
+begin
+  Self.Create(Mainnet, aURL, aProtocol, aSecurity);
+end;
+
+constructor TWeb3Ex.Create(
   aChain    : TChain;
   const aURL: string;
-  aProtocol : IProtocol;
-  aSecurity : TSecurity);
+  aProtocol : IPubSub;
+  aSecurity : TSecurity = TSecurity.Automatic);
 begin
   Self.FChain    := aChain;
   Self.FURL      := aURL;
@@ -410,20 +484,41 @@ begin
   Self.FSecurity := aSecurity;
 end;
 
-function TWeb3.GetJsonRpc: IJsonRpc;
+function TWeb3Ex.Call(const method: string; args: array of const): TJsonObject;
 begin
-  Result := nil;
-  if Assigned(FProtocol) then
-    if not Supports(FProtocol, IJsonRpc, Result) then
-      Result := nil;
+  Result := Self.FProtocol.Call(Self.URL, Self.FSecurity, method, args);
 end;
 
-function TWeb3.GetPubSub: IPubSub;
+procedure TWeb3Ex.Call(const method: string; args: array of const; callback: TAsyncJsonObject);
 begin
-  Result := nil;
-  if Assigned(FProtocol) then
-    if not Supports(FProtocol, IPubSub, Result) then
-      Result := nil;
+  Self.FProtocol.Call(Self.URL, Self.FSecurity, method, args, callback);
+end;
+
+procedure TWeb3Ex.Subscribe(const subscription: string; callback: TAsyncJsonObject);
+begin
+  Self.FProtocol.Subscribe(subscription, callback);
+end;
+
+procedure TWeb3Ex.Unsubscribe(const subscription: string);
+begin
+  Self.FProtocol.Unsubscribe(subscription);
+end;
+
+procedure TWeb3Ex.Disconnect;
+begin
+  Self.FProtocol.Disconnect;
+end;
+
+function TWeb3Ex.OnError(callback: TAsyncError): IWeb3Ex;
+begin
+  Self.FProtocol.OnError(callback);
+  Result := Self;
+end;
+
+function TWeb3Ex.OnDisconnect(callback: TProc): IWeb3Ex;
+begin
+  Self.FProtocol.OnDisconnect(callback);
+  Result := Self;
 end;
 
 end.

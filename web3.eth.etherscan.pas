@@ -91,7 +91,7 @@ type
   TAsyncContractABI = reference to procedure(abi: IContractABI; err: IError);
 
 procedure getBlockNumberByTimestamp(
-  client      : TWeb3;
+  client      : IWeb3;
   timestamp   : TUnixDateTime;
   callback    : TAsyncQuantity); overload;
 procedure getBlockNumberByTimestamp(
@@ -101,7 +101,7 @@ procedure getBlockNumberByTimestamp(
   callback    : TAsyncQuantity); overload;
 
 procedure getErc20TransferEvents(
-  client      : TWeb3;
+  client      : IWeb3;
   address     : TAddress;
   callback    : TAsyncErc20TransferEvents); overload;
 procedure getErc20TransferEvents(
@@ -111,7 +111,7 @@ procedure getErc20TransferEvents(
   callback    : TAsyncErc20TransferEvents); overload;
 
 procedure getContractABI(
-  client      : TWeb3;
+  client      : IWeb3;
   contract    : TAddress;
   callback    : TAsyncContractABI); overload;
 procedure getContractABI(
@@ -136,17 +136,19 @@ uses
 function endpoint(chain: TChain; const apiKey: string): string;
 const
   ENDPOINT: array[TChain] of string = (
-    'https://api.etherscan.io/api?apikey=%s',         // Mainnet
-    'https://api-ropsten.etherscan.io/api?apikey=%s', // Ropsten
-    'https://api-rinkeby.etherscan.io/api?apikey=%s', // Rinkeby
-    'https://api-goerli.etherscan.io/api?apikey=%s',  // Goerli
-    '',                                               // Optimism
-    '',                                               // RSK_main_net
-    '',                                               // RSK_test_net
-    'https://api-kovan.etherscan.io/api?apikey=%s',   // Kovan
-    '',                                               // BSC_main_net
-    '',                                               // BSC_test_net
-    ''                                                // xDai
+    'https://api.etherscan.io/api?apikey=%s',                  // Mainnet
+    'https://api-ropsten.etherscan.io/api?apikey=%s',          // Ropsten
+    'https://api-rinkeby.etherscan.io/api?apikey=%s',          // Rinkeby
+    'https://api-kovan.etherscan.io/api?apikey=%s',            // Kovan
+    'https://api-goerli.etherscan.io/api?apikey=%s',           // Goerli
+    'https://api-optimistic.etherscan.io/api?apikey=%s',       // Optimism
+    'https://api-kovan-optimistic.etherscan.io/api?apikey=%s', // Optimism_test_net
+    '',                                                        // RSK_main_net
+    '',                                                        // RSK_test_net
+    'https://api.bscscan.com/api?apikey=%s',                   // BSC_main_net
+    'https://api-testnet.bscscan.com/api?apikey=%s',           // BSC_test_net
+    '',                                                        // xDai
+    ''                                                         // Arbitrum
   );
 begin
   Result := ENDPOINT[chain];
@@ -562,7 +564,7 @@ end;
 {------------------------------ global functions ------------------------------}
 
 procedure getBlockNumberByTimestamp(
-  client   : TWeb3;
+  client   : IWeb3;
   timestamp: TUnixDateTime;
   callback : TAsyncQuantity);
 begin
@@ -599,7 +601,7 @@ begin
 end;
 
 procedure getErc20TransferEvents(
-  client  : TWeb3;
+  client  : IWeb3;
   address : TAddress;
   callback: TAsyncErc20TransferEvents);
 begin
@@ -645,7 +647,7 @@ begin
 end;
 
 procedure getContractABI(
-  client  : TWeb3;
+  client  : IWeb3;
   contract: TAddress;
   callback: TAsyncContractABI);
 begin
