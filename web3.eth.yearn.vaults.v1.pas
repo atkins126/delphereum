@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -24,21 +37,21 @@ uses
   web3.eth.types;
 
 type
-  TyVault = class(TLendingProtocol)
+  TyVaultV1 = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure TokenToUnderlying(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToToken(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
@@ -48,28 +61,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       period  : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -79,11 +92,8 @@ type
 implementation
 
 uses
-  // Delphi
-  System.Types,
   // web3
-  web3.eth.yearn.finance,
-  web3.eth.yearn.tools;
+  web3.eth.yearn.finance;
 
 type
   TyDAI = class(TyToken)
@@ -106,6 +116,11 @@ type
     class function DeployedAt: TAddress; override;
   end;
 
+  TyTUSD = class(TyToken)
+  public
+    class function DeployedAt: TAddress; override;
+  end;
+
 type
   TyTokenClass = class of TyToken;
 
@@ -114,13 +129,14 @@ const
     TyDAI,
     TyUSDC,
     TyUSDT,
-    TyMUSD
+    TyMUSD,
+    TyTUSD
   );
 
-{ TyVault }
+{ TyVaultV1 }
 
-class procedure TyVault.Approve(
-  client  : TWeb3;
+class procedure TyVaultV1.Approve(
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -140,8 +156,8 @@ begin
   end;
 end;
 
-class procedure TyVault.TokenToUnderlying(
-  client  : TWeb3;
+class procedure TyVaultV1.TokenToUnderlying(
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BigInteger;
   callback: TAsyncQuantity);
@@ -155,8 +171,8 @@ begin
   end;
 end;
 
-class procedure TyVault.UnderlyingToToken(
-  client  : TWeb3;
+class procedure TyVaultV1.UnderlyingToToken(
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
@@ -170,58 +186,38 @@ begin
   end;
 end;
 
-class function TyVault.Name: string;
+class function TyVaultV1.Name: string;
 begin
-  Result := 'yVault';
+  Result := 'yVault v1';
 end;
 
-class function TyVault.Supports(chain: TChain; reserve: TReserve): Boolean;
+class function TyVaultV1.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  Result := (chain = Mainnet) and (Reserve in [DAI, USDC, USDT, mUSD]);
+  Result := (chain = Mainnet) and (Reserve in [DAI, USDC, USDT, MUSD, TUSD]);
 end;
 
-class procedure TyVault.APY(
-  client  : TWeb3;
+class procedure TyVaultV1.APY(
+  client  : IWeb3;
   reserve : TReserve;
   period  : TPeriod;
   callback: TAsyncFloat);
-
-  function getAPY(addr: TAddress; period: TPeriod; callback: TAsyncFloat): IAsyncResult;
+begin
+  var yToken := yTokenClass[reserve].Create(client);
+  if Assigned(yToken) then
   begin
-    Result := web3.eth.yearn.tools.vault(addr, procedure(vault: IYearnVault; err: IError)
+    yToken.APY(period, procedure(apy: Double; err: IError)
     begin
-      if Assigned(err) then
-        callback(0, err)
-      else
-        callback(vault.APY(period), nil);
+      try
+        callback(apy, err);
+      finally
+        yToken.Free;
+      end;
     end);
   end;
-
-begin
-  getAPY(yTokenClass[reserve].DeployedAt, period, procedure(apy: Extended; err: IError)
-  begin
-    if (apy > 0) and not Assigned(err) then
-    begin
-      callback(apy, err);
-      EXIT;
-    end;
-    var yToken := yTokenClass[reserve].Create(client);
-    if Assigned(yToken) then
-    begin
-      yToken.APY(period, procedure(apy: Extended; err: IError)
-      begin
-        try
-          callback(apy, err);
-        finally
-          yToken.Free;
-        end;
-      end);
-    end;
-  end);
 end;
 
-class procedure TyVault.Deposit(
-  client  : TWeb3;
+class procedure TyVaultV1.Deposit(
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -244,8 +240,8 @@ begin
   end);
 end;
 
-class procedure TyVault.Balance(
-  client  : TWeb3;
+class procedure TyVaultV1.Balance(
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -275,8 +271,8 @@ begin
   end;
 end;
 
-class procedure TyVault.Withdraw(
-  client  : TWeb3;
+class procedure TyVaultV1.Withdraw(
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -317,8 +313,8 @@ begin
   end;
 end;
 
-class procedure TyVault.WithdrawEx(
-  client  : TWeb3;
+class procedure TyVaultV1.WithdrawEx(
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -375,6 +371,13 @@ end;
 class function TyMUSD.DeployedAt: TAddress;
 begin
   Result := TAddress('0xE0db48B4F71752C4bEf16De1DBD042B82976b8C7');
+end;
+
+{ TyTUSD }
+
+class function TyTUSD.DeployedAt: TAddress;
+begin
+  Result := TAddress('0x37d19d1c4E1fa9DC47bD1eA12f742a0887eDa74a');
 end;
 
 end.

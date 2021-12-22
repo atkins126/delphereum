@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {                  https://geth.ethereum.org/docs/rpc/pubsub                   }
 {                                                                              }
@@ -36,7 +49,7 @@ type
   );
 
 procedure subscribe(
-  client      : TWeb3;
+  client      : IWeb3Ex;
   subscription: TSubscription;
   callback    : TAsyncString;     // one-time callback (subscribed, or a JSON-RPC error)
   notification: TAsyncJsonObject; // continuous notifications (or a JSON-RPC error)
@@ -44,9 +57,9 @@ procedure subscribe(
   onDisconnect: TProc);           // connection closed
 
 procedure unsubscribe(
-  client            : TWeb3;
-  const subscription: string;         // as returned by the eth_subscribe callback
-  callback          : TAsyncBoolean); // true if successful, otherwise false
+  client   : IWeb3Ex;
+  const sub: string;         // as returned by the eth_subscribe callback
+  callback : TAsyncBoolean); // true if successful, otherwise false
 
 function blockNumber(notification: TJsonObject): BigInteger;
 
@@ -74,27 +87,19 @@ end;
 {---------------------------------- globals -----------------------------------}
 
 procedure subscribe(
-  client      : TWeb3;
+  client      : IWeb3Ex;
   subscription: TSubscription;
   callback    : TAsyncString;
   notification: TAsyncJsonObject;
   onError     : TAsyncError;
   onDisconnect: TProc);
 var
-  pubSub: IPubSub;
   result: string;
 begin
-  pubSub := client.PubSub;
-  if not Assigned(pubSub) then
-  begin
-    callback('', TError.Create('not a WebSocket'));
-    EXIT;
-  end;
+  client.OnError(onError);
+  client.OnDisconnect(onDisconnect);
 
-  pubSub.OnError      := onError;
-  pubSub.OnDisconnect := onDisconnect;
-
-  client.JsonRpc.Send(client.URL, client.Security, 'eth_subscribe', [subscription.ToString], procedure(resp: TJsonObject; err: IError)
+  client.Call('eth_subscribe', [subscription.ToString], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
     begin
@@ -105,18 +110,18 @@ begin
     result := web3.json.getPropAsStr(resp, 'result');
     callback(result, nil);
 
-    pubSub.Subscribe(result, notification);
+    client.Subscribe(result, notification);
   end);
 end;
 
 procedure unsubscribe(
-  client            : TWeb3;
-  const subscription: string;
-  callback          : TAsyncBoolean);
+  client   : IWeb3Ex;
+  const sub: string;
+  callback : TAsyncBoolean);
 var
   result: Boolean;
 begin
-  client.JsonRpc.Send(client.URL, client.Security, 'eth_unsubscribe', [subscription], procedure(resp: TJsonObject; err: IError)
+  client.Call('eth_unsubscribe', [sub], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
     begin
@@ -128,7 +133,7 @@ begin
     callback(result, nil);
 
     if result then
-      client.PubSub.Unsubscribe(subscription);
+      client.Unsubscribe(sub);
   end);
 end;
 

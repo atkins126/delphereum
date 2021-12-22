@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -91,7 +104,7 @@ type
   TAsyncContractABI = reference to procedure(abi: IContractABI; err: IError);
 
 procedure getBlockNumberByTimestamp(
-  client      : TWeb3;
+  client      : IWeb3;
   timestamp   : TUnixDateTime;
   callback    : TAsyncQuantity); overload;
 procedure getBlockNumberByTimestamp(
@@ -101,7 +114,7 @@ procedure getBlockNumberByTimestamp(
   callback    : TAsyncQuantity); overload;
 
 procedure getErc20TransferEvents(
-  client      : TWeb3;
+  client      : IWeb3;
   address     : TAddress;
   callback    : TAsyncErc20TransferEvents); overload;
 procedure getErc20TransferEvents(
@@ -111,7 +124,7 @@ procedure getErc20TransferEvents(
   callback    : TAsyncErc20TransferEvents); overload;
 
 procedure getContractABI(
-  client      : TWeb3;
+  client      : IWeb3;
   contract    : TAddress;
   callback    : TAsyncContractABI); overload;
 procedure getContractABI(
@@ -136,17 +149,22 @@ uses
 function endpoint(chain: TChain; const apiKey: string): string;
 const
   ENDPOINT: array[TChain] of string = (
-    'https://api.etherscan.io/api?apikey=%s',         // Mainnet
-    'https://api-ropsten.etherscan.io/api?apikey=%s', // Ropsten
-    'https://api-rinkeby.etherscan.io/api?apikey=%s', // Rinkeby
-    'https://api-goerli.etherscan.io/api?apikey=%s',  // Goerli
-    '',                                               // Optimism
-    '',                                               // RSK_main_net
-    '',                                               // RSK_test_net
-    'https://api-kovan.etherscan.io/api?apikey=%s',   // Kovan
-    '',                                               // BSC_main_net
-    '',                                               // BSC_test_net
-    ''                                                // xDai
+    'https://api.etherscan.io/api?apikey=%s',                  // Mainnet
+    'https://api-ropsten.etherscan.io/api?apikey=%s',          // Ropsten
+    'https://api-rinkeby.etherscan.io/api?apikey=%s',          // Rinkeby
+    'https://api-kovan.etherscan.io/api?apikey=%s',            // Kovan
+    'https://api-goerli.etherscan.io/api?apikey=%s',           // Goerli
+    'https://api-optimistic.etherscan.io/api?apikey=%s',       // Optimism
+    'https://api-kovan-optimistic.etherscan.io/api?apikey=%s', // Optimism_test_net
+    '',                                                        // RSK
+    '',                                                        // RSK_test_net
+    'https://api.bscscan.com/api?apikey=%s',                   // BSC
+    'https://api-testnet.bscscan.com/api?apikey=%s',           // BSC_test_net
+    '',                                                        // xDai
+    'https://api.polygonscan.com/api?apikey=%s',               // Polygon
+    'https://api-testnet.polygonscan.com/api?apikey=%s',       // Polygon_test_net
+    'https://api.arbiscan.io/api?apikey=%s',                   // Arbitrum
+    'https://api-testnet.arbiscan.io/api?apikey=%s'            // Arbitrum_test_net
   );
 begin
   Result := ENDPOINT[chain];
@@ -310,7 +328,7 @@ var
   S: string;
 begin
   S := getPropAsStr(FJsonObject, 'type');
-  for Result := Low(TSymbolType) to High(TSymbolType) do
+  for Result := System.Low(TSymbolType) to High(TSymbolType) do
     if SameText(GetEnumName(TypeInfo(TSymbolType), Integer(Result)), S) then
       EXIT;
   Result := UnknownSymbol;
@@ -331,7 +349,7 @@ var
   S: string;
 begin
   S := getPropAsStr(FJsonObject, 'stateMutability');
-  for Result := Low(TStateMutability) to High(TStateMutability) do
+  for Result := System.Low(TStateMutability) to High(TStateMutability) do
     if SameText(GetEnumName(TypeInfo(TStateMutability), Integer(Result)), S) then
       EXIT;
   Result := UnknownMutability;
@@ -562,7 +580,7 @@ end;
 {------------------------------ global functions ------------------------------}
 
 procedure getBlockNumberByTimestamp(
-  client   : TWeb3;
+  client   : IWeb3;
   timestamp: TUnixDateTime;
   callback : TAsyncQuantity);
 begin
@@ -599,7 +617,7 @@ begin
 end;
 
 procedure getErc20TransferEvents(
-  client  : TWeb3;
+  client  : IWeb3;
   address : TAddress;
   callback: TAsyncErc20TransferEvents);
 begin
@@ -645,7 +663,7 @@ begin
 end;
 
 procedure getContractABI(
-  client  : TWeb3;
+  client  : IWeb3;
   contract: TAddress;
   callback: TAsyncContractABI);
 begin

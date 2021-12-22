@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {        need tokens to test with?                                             }
 {        1. make sure your wallet is set to the relevant testnet               }
@@ -36,7 +49,7 @@ type
   TCompound = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -47,28 +60,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -96,7 +109,7 @@ type
     function  ListenForLatestBlock: Boolean; override;
     procedure OnLatestBlockMined(log: TLog); override;
   public
-    constructor Create(aClient: TWeb3); reintroduce; overload; virtual; abstract;
+    constructor Create(aClient: IWeb3); reintroduce; overload; virtual; abstract;
     //------- read from contract -----------------------------------------------
     procedure APY(callback: TAsyncQuantity);
     procedure BalanceOfUnderlying(owner: TAddress; callback: TAsyncQuantity);
@@ -114,17 +127,22 @@ type
 
   TcDAI = class(TcToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TcUSDC = class(TcToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TcUSDT = class(TcToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
+  end;
+
+  TcTUSD = class(TcToken)
+  public
+    constructor Create(aClient: IWeb3); override;
   end;
 
 const
@@ -156,14 +174,15 @@ const
     TcDAI,
     TcUSDC,
     TcUSDT,
-    nil
+    nil,
+    TcTUSD
   );
 
 { TCompound }
 
 // Approve the cToken contract to move your underlying asset.
 class procedure TCompound.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -207,6 +226,8 @@ end;
 class function TCompound.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
   Result := (
+    (reserve = TUSD) and (chain = Mainnet)
+  ) or (
     (reserve = USDT) and (chain in [Mainnet, Ropsten, Rinkeby, Kovan])
   ) or (
     (reserve in [DAI, USDC]) and (chain in [Mainnet, Ropsten, Rinkeby, Goerli, Kovan])
@@ -215,7 +236,7 @@ end;
 
 // Returns the annual yield as a percentage with 4 decimals.
 class procedure TCompound.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
@@ -237,7 +258,7 @@ end;
 
 // Deposits an underlying asset into the lending pool.
 class procedure TCompound.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -263,7 +284,7 @@ end;
 
 // Returns how much underlying assets you are entitled to.
 class procedure TCompound.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -279,7 +300,7 @@ end;
 
 // Redeems your balance of cTokens for the underlying asset.
 class procedure TCompound.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -326,7 +347,7 @@ begin
 end;
 
 class procedure TCompound.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -472,7 +493,7 @@ begin
   web3.eth.call(Client, Contract, 'underlying()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -480,7 +501,7 @@ end;
 
 { TcDAI }
 
-constructor TcDAI.Create(aClient: TWeb3);
+constructor TcDAI.Create(aClient: IWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
@@ -499,7 +520,7 @@ end;
 
 { TcUSDC }
 
-constructor TcUSDC.Create(aClient: TWeb3);
+constructor TcUSDC.Create(aClient: IWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
@@ -518,7 +539,7 @@ end;
 
 { TcUSDT }
 
-constructor TcUSDT.Create(aClient: TWeb3);
+constructor TcUSDT.Create(aClient: IWeb3);
 begin
   // https://compound.finance/docs#networks
   case aClient.Chain of
@@ -531,6 +552,14 @@ begin
     Kovan:
       inherited Create(aClient, '0x3f0a0ea2f86bae6362cf9799b523ba06647da018');
   end;
+end;
+
+{ TcTUSD }
+
+constructor TcTUSD.Create(aClient: IWeb3);
+begin
+  // https://compound.finance/docs#networks
+  inherited Create(aClient, '0x12392f67bdf24fae0af363c24ac620a2f67dad86');
 end;
 
 end.

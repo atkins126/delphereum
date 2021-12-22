@@ -5,7 +5,20 @@
 {             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -51,25 +64,34 @@ type
   TTopics = array[0..3] of TArg;
 
 type
-  ITxn = interface
+  IBlock = interface
     function ToString: string;
-    function blockNumber: BigInteger; // block number where this transaction was in. null when its pending.
-    function from: TAddress;          // address of the sender.
-    function gasLimit: TWei;          // gas provided by the sender.
-    function gasPrice: TWei;          // gas price provided by the sender in Wei.
-    function input: string;           // the data send along with the transaction.
-    function &to: TAddress;           // address of the receiver. null when its a contract creation transaction.
-    function value: TWei;             // value transferred in Wei.
+    function baseFeePerGas: TWei;
+  end;
+
+  ITxn = interface
+    function &type: Byte;
+    function ToString: string;
+    function blockNumber: BigInteger;    // block number where this transaction was in. null when its pending.
+    function from: TAddress;             // address of the sender.
+    function gasLimit: BigInteger;       // gas limit provided by the sender.
+    function gasPrice: TWei;             // gas price provided by the sender in Wei.
+    function maxPriorityFeePerGas: TWei; // EIP-1559-only
+    function maxFeePerGas: TWei;         // EIP-1559-only
+    function input: string;              // the data send along with the transaction.
+    function &to: TAddress;              // address of the receiver. null when its a contract creation transaction.
+    function value: TWei;                // value transferred in Wei.
   end;
 
 type
   ITxReceipt = interface
     function ToString: string;
-    function txHash: TTxHash; // hash of the transaction.
-    function from: TAddress;  // address of the sender.
-    function &to: TAddress;   // address of the receiver. null when it's a contract creation transaction.
-    function gasUsed: TWei;   // the amount of gas used by this specific transaction.
-    function status: Boolean; // success or failure.
+    function txHash: TTxHash;         // hash of the transaction.
+    function from: TAddress;          // address of the sender.
+    function &to: TAddress;           // address of the receiver. null when it's a contract creation transaction.
+    function gasUsed: BigInteger;     // the amount of gas used by this specific transaction.
+    function status: Boolean;         // success or failure.
+    function effectiveGasPrice: TWei; // eip-1559-only
   end;
 
 type
@@ -77,21 +99,22 @@ type
   TAsyncQuantity  = reference to procedure(qty  : BigInteger; err : IError);
   TAsyncBoolean   = reference to procedure(bool : Boolean;    err : IError);
   TAsyncAddress   = reference to procedure(addr : TAddress;   err : IError);
-  TAsyncBytes     = reference to procedure(bytes: TBytes32;   err : IError);
+  TAsyncBytes32   = reference to procedure(bytes: TBytes32;   err : IError);
   TAsyncArg       = reference to procedure(arg  : TArg;       next: TProc);
   TAsyncTuple     = reference to procedure(tup  : TTuple;     err : IError);
   TAsyncTxHash    = reference to procedure(hash : TTxHash;    err : IError);
+  TAsyncBlock     = reference to procedure(block: IBlock;     err : IError);
   TAsyncTxn       = reference to procedure(txn  : ITxn;       err : IError);
   TAsyncReceipt   = reference to procedure(rcpt : ITxReceipt; err : IError);
   TAsyncReceiptEx = reference to procedure(rcpt : ITxReceipt; qty : BigInteger; err: IError);
-  TAsyncFloat     = reference to procedure(value: Extended;   err : IError);
+  TAsyncFloat     = reference to procedure(value: Double;     err : IError);
 
 type
   TAddressHelper = record helper for TAddress
     class function  New(arg: TArg): TAddress; overload; static;
     class function  New(const hex: string): TAddress; overload; static;
-    class procedure New(client: TWeb3; const name: string; callback: TAsyncAddress); overload; static;
-    procedure ToString(client: TWeb3; callback: TAsyncString; abbreviated: Boolean = False);
+    class procedure New(client: IWeb3; const name: string; callback: TAsyncAddress); overload; static;
+    procedure ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean = False);
     function  Abbreviated: string;
     function  IsZero: Boolean;
   end;
@@ -195,7 +218,7 @@ var
 begin
   if not web3.utils.isHex(hex) then
   begin
-    Result := ADDRESS_ZERO;
+    Result := EMPTY_ADDRESS;
     EXIT;
   end;
   buf := web3.utils.fromHex(hex);
@@ -213,7 +236,7 @@ begin
       Result := TAddress(web3.utils.toHex(Copy(buf, Length(buf) - 20, 20)));
 end;
 
-class procedure TAddressHelper.New(client: TWeb3; const name: string; callback: TAsyncAddress);
+class procedure TAddressHelper.New(client: IWeb3; const name: string; callback: TAsyncAddress);
 begin
   if web3.utils.isHex(name) then
     callback(New(name), nil)
@@ -221,7 +244,7 @@ begin
     web3.eth.ens.addr(client, name, callback);
 end;
 
-procedure TAddressHelper.ToString(client: TWeb3; callback: TAsyncString; abbreviated: Boolean);
+procedure TAddressHelper.ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean);
 var
   addr: TAddress;
 begin
@@ -245,7 +268,7 @@ begin
 
     if abbreviated then
       if isHex(output) then
-        output := Copy(output, Low(output), 8);
+        output := Copy(output, System.Low(output), 8);
 
     callback(output, nil);
   end);
@@ -254,7 +277,7 @@ end;
 function TAddressHelper.Abbreviated: string;
 begin
   Result := string(Self);
-  Result := Copy(Result, Low(Result), 8);
+  Result := Copy(Result, System.Low(Result), 8);
 end;
 
 function TAddressHelper.IsZero: Boolean;
@@ -293,7 +316,7 @@ begin
     Delete(buffer, 0, 12);
     callback(TAddress.New(web3.utils.toHex(buffer)), nil);
   except
-    callback(ADDRESS_ZERO, TError.Create('Private key is invalid'));
+    callback(EMPTY_ADDRESS, TError.Create('Private key is invalid'));
   end;
 end;
 

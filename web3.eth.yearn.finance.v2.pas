@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -32,28 +45,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       period  : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -78,12 +91,18 @@ type
     class function DeployedAt: TAddress; override;
   end;
 
+  TyTUSDv2 = class(TyToken)
+  public
+    class function DeployedAt: TAddress; override;
+  end;
+
 const
   yTokenClass: array[TReserve] of TyTokenClass = (
     TyDAIv2,  // DAI
     TyUSDCv2, // USDC
     TyUSDTv2, // USDT
-    nil       // mUSD
+    nil,      // mUSD
+    TyTUSDv2  // TUSD
   );
 
 { TyEarnV2 }
@@ -95,11 +114,11 @@ end;
 
 class function TyEarnV2.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  Result := (chain = Mainnet) and (reserve in [DAI, USDC, USDT]);
+  Result := (chain = Mainnet) and (reserve in [DAI, USDC, USDT, TUSD]);
 end;
 
 class procedure TyEarnV2.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   period  : TPeriod;
   callback: TAsyncFloat);
@@ -108,7 +127,7 @@ begin
 end;
 
 class procedure TyEarnV2.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -118,7 +137,7 @@ begin
 end;
 
 class procedure TyEarnV2.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -127,7 +146,7 @@ begin
 end;
 
 class procedure TyEarnV2.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -136,7 +155,7 @@ begin
 end;
 
 class procedure TyEarnV2.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -164,6 +183,13 @@ end;
 class function TyUSDTv2.DeployedAt: TAddress;
 begin
   Result := TAddress('0x83f798e925BcD4017Eb265844FDDAbb448f1707D');
+end;
+
+{ TyTUSDv2 }
+
+class function TyTUSDv2.DeployedAt: TAddress;
+begin
+  Result := TAddress('0x73a052500105205d34daf004eab301916da8190f');
 end;
 
 end.

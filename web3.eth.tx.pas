@@ -5,7 +5,20 @@
 {             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -19,6 +32,7 @@ uses
   // Delphi
   System.JSON,
   System.SysUtils,
+  System.Variants,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // CryptoLib4Pascal
@@ -52,76 +66,62 @@ type
   end;
 
 procedure getNonce(
-  client  : TWeb3;
+  client  : IWeb3;
   address : TAddress;
   callback: TAsyncQuantity);
 
 procedure signTransaction(
-  client      : TWeb3;
+  client      : IWeb3;
   nonce       : BigInteger;
   from        : TPrivateKey;
   &to         : TAddress;
   value       : TWei;
   const data  : string;
-  gasPrice    : TWei;
-  gasLimit    : TWei;
-  estimatedGas: TWei;
-  callback    : TAsyncString); overload;
+  gasLimit    : BigInteger;
+  estimatedGas: BigInteger;
+  callback    : TAsyncString);
 
-function signTransaction(
-  chain     : TChain;
+function signTransactionLegacy(
+  chainId   : Integer;
   nonce     : BigInteger;
   from      : TPrivateKey;
   &to       : TAddress;
   value     : TWei;
   const data: string;
   gasPrice  : TWei;
-  gasLimit  : TWei): string; overload;
+  gasLimit  : BigInteger): string;
+
+function signTransactionType2(
+  chainId       : Integer;
+  nonce         : BigInteger;
+  from          : TPrivateKey;
+  &to           : TAddress;
+  value         : TWei;
+  const data    : string;
+  maxPriorityFee: TWei;
+  maxFee        : TWei;
+  gasLimit      : BigInteger): string;
 
 // send raw (aka signed) transaction.
 procedure sendTransaction(
-  client   : TWeb3;
+  client   : IWeb3;
   const raw: string;
   callback : TAsyncTxHash); overload;
 
 // send raw transaction, get the receipt, and get the reason if the transaction failed.
 procedure sendTransactionEx(
-  client   : TWeb3;
+  client   : IWeb3;
   const raw: string;
   callback : TAsyncReceipt); overload;
 
-// 1. calculate the current gas price, then
-// 2. calculate the nonce, then
-// 3. sign the transaction, then
-// 4. send the raw transaction.
-procedure sendTransaction(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  &to     : TAddress;
-  value   : TWei;
-  callback: TAsyncTxHash); overload;
-
 // 1. calculate the nonce, then
-// 2. calculate the current gas price, then
-// 3. sign the transaction, then
-// 4. send the raw transaction, then
-// 5. get the transaction receipt, then
-// 6. get the reason if the transaction failed.
-procedure sendTransactionEx(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  &to     : TAddress;
-  value   : TWei;
-  callback: TAsyncReceipt); overload;
-
-// calculate the nonce, then sign the transaction, then send the transaction.
+// 2. sign the transaction, then
+// 3. send the raw transaction.
 procedure sendTransaction(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   &to     : TAddress;
   value   : TWei;
-  gasPrice: TWei;
-  gasLimit: TWei;
   callback: TAsyncTxHash); overload;
 
 // 1. calculate the nonce, then
@@ -130,45 +130,35 @@ procedure sendTransaction(
 // 4. get the transaction receipt, then
 // 5. get the reason if the transaction failed.
 procedure sendTransactionEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   &to     : TAddress;
   value   : TWei;
-  gasPrice: TWei;
-  gasLimit: TWei;
   callback: TAsyncReceipt); overload;
 
 // returns the information about a transaction requested by transaction hash.
 procedure getTransaction(
-  client  : TWeb3;
+  client  : IWeb3;
   hash    : TTxHash;
   callback: TAsyncTxn);
 
 // returns the receipt of a transaction by transaction hash.
 procedure getTransactionReceipt(
-  client  : TWeb3;
+  client  : IWeb3;
   hash    : TTxHash;
   callback: TAsyncReceipt);
 
 // get the revert reason for a failed transaction.
 procedure getTransactionRevertReason(
-  client  : TWeb3;
+  client  : IWeb3;
   rcpt    : ITxReceipt;
   callback: TAsyncString);
 
 // cancel a pending transaction
 procedure cancelTransaction(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   nonce   : BigInteger;
-  callback: TAsyncTxHash); overload;
-
-// cancel a pending transaction
-procedure cancelTransaction(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  nonce   : BigInteger;
-  gasPrice: TWei;
   callback: TAsyncTxHash); overload;
 
 implementation
@@ -197,7 +187,7 @@ begin
 end;
 
 procedure getNonce(
-  client  : TWeb3;
+  client  : IWeb3;
   address : TAddress;
   callback: TAsyncQuantity);
 begin
@@ -229,15 +219,14 @@ begin
 end;
 
 procedure signTransaction(
-  client      : TWeb3;
+  client      : IWeb3;
   nonce       : BigInteger;
   from        : TPrivateKey;
   &to         : TAddress;
   value       : TWei;
   const data  : string;
-  gasPrice    : TWei;
-  gasLimit    : TWei;
-  estimatedGas: TWei;
+  gasLimit    : BigInteger;
+  estimatedGas: BigInteger;
   callback    : TAsyncString);
 resourcestring
   RS_SIGNATURE_DENIED = 'User denied transaction signature';
@@ -245,40 +234,74 @@ begin
   from.Address(procedure(addr: TAddress; err: IError)
   begin
     if Assigned(err) then
-      callback('', err)
-    else
+    begin
+      callback('', err);
+      EXIT;
+    end;
+    web3.eth.gas.getGasPrice(client, procedure(gasPrice: TWei; err: IError)
+    begin
+      if Assigned(err) then
+      begin
+        callback('', err);
+        EXIT;
+      end;
       client.CanSignTransaction(addr, &to, gasPrice, estimatedGas, procedure(approved: Boolean; err: IError)
       begin
         if Assigned(err) then
-          callback('', err)
-        else
-          if not approved then
-            callback('', TSignatureDenied.Create(RS_SIGNATURE_DENIED))
-          else
-            callback(signTransaction(client.Chain, nonce, from, &to, value, data, gasPrice, gasLimit), nil);
+        begin
+          callback('', err);
+          EXIT;
+        end;
+
+        if not approved then
+        begin
+          callback('', TSignatureDenied.Create(RS_SIGNATURE_DENIED));
+          EXIT;
+        end;
+
+        if client.Chain.TxType >= 2 then // EIP-1559
+        begin
+          web3.eth.gas.getMaxPriorityFeePerGas(client, procedure(tip: BigInteger; err: IError)
+          begin
+            if Assigned(err) then
+            begin
+              callback('', err);
+              EXIT;
+            end;
+            web3.eth.gas.getMaxFeePerGas(client, procedure(max: BigInteger; err: IError)
+            begin
+              if Assigned(err) then
+              begin
+                callback('', err);
+                EXIT;
+              end;
+              callback(signTransactionType2(client.Chain.Id, nonce, from, &to, value, data, tip, max, gasLimit), nil);
+            end);
+          end);
+          EXIT;
+        end;
+
+        callback(signTransactionLegacy(client.Chain.Id, nonce, from, &to, value, data, gasPrice, gasLimit), nil);
       end);
+    end);
   end);
 end;
 
-function signTransaction(
-  chain     : TChain;
+function signTransactionLegacy(
+  chainId   : Integer;
   nonce     : BigInteger;
   from      : TPrivateKey;
   &to       : TAddress;
   value     : TWei;
   const data: string;
   gasPrice  : TWei;
-  gasLimit  : TWei): string;
-var
-  Signer   : TEthereumSigner;
-  Signature: TECDsaSignature;
-  r, s, v  : TBigInteger;
+  gasLimit  : BigInteger): string;
 begin
-  Signer := TEthereumSigner.Create;
+  var Signer := TEthereumSigner.Create;
   try
     Signer.Init(True, from.Parameters);
 
-    Signature := Signer.GenerateSignature(
+    var Signature := Signer.GenerateSignature(
       sha3(
         web3.rlp.encode([
           web3.utils.toHex(nonce, [padToEven]),    // nonce
@@ -287,16 +310,16 @@ begin
           &to,                                     // to
           web3.utils.toHex(value, [padToEven]),    // value
           data,                                    // data
-          chain.Id,                                // v
+          chainId,                                 // v
           0,                                       // r
           0                                        // s
         ])
       )
     );
 
-    r := Signature.r;
-    s := Signature.s;
-    v := Signature.rec.Add(TBigInteger.ValueOf(chain.Id * 2 + 35));
+    var r := Signature.r;
+    var s := Signature.s;
+    var v := Signature.rec.Add(TBigInteger.ValueOf(chainId * 2 + 35));
 
     Result :=
       web3.utils.toHex(
@@ -317,10 +340,69 @@ begin
   end;
 end;
 
-// send raw (aka signed) transaction.
-procedure sendTransaction(client: TWeb3; const raw: string; callback: TAsyncTxHash);
+function signTransactionType2(
+  chainId       : Integer;
+  nonce         : BigInteger;
+  from          : TPrivateKey;
+  &to           : TAddress;
+  value         : TWei;
+  const data    : string;
+  maxPriorityFee: TWei;
+  maxFee        : TWei;
+  gasLimit      : BigInteger): string;
 begin
-  client.JsonRpc.Send(client.URL, client.Security, 'eth_sendRawTransaction', [raw], procedure(resp: TJsonObject; err: IError)
+  var Signer := TEthereumSigner.Create;
+  try
+    Signer.Init(True, from.Parameters);
+
+    var Signature := Signer.GenerateSignature(
+      sha3(
+        [2] +
+        web3.rlp.encode([
+          web3.utils.toHex(chainId),                     // chainId
+          web3.utils.toHex(nonce, [padToEven]),          // nonce
+          web3.utils.toHex(maxPriorityFee, [padToEven]), // maxPriorityFeePerGas
+          web3.utils.toHex(maxFee, [padToEven]),         // maxFeePerGas
+          web3.utils.toHex(gasLimit, [padToEven]),       // gas(Limit)
+          &to,                                           // to
+          web3.utils.toHex(value, [padToEven]),          // value
+          data,                                          // data
+          VarArrayCreate([0, 0], varVariant)             // accessList
+        ])
+      )
+    );
+
+    var r := Signature.r;
+    var s := Signature.s;
+    var v := Signature.rec;
+
+    Result :=
+      web3.utils.toHex(
+        [2] +
+        web3.rlp.encode([
+          web3.utils.toHex(chainId),                     // chainId
+          web3.utils.toHex(nonce, [padToEven]),          // nonce
+          web3.utils.toHex(maxPriorityFee, [padToEven]), // maxPriorityFeePerGas
+          web3.utils.toHex(maxFee, [padToEven]),         // maxFeePerGas
+          web3.utils.toHex(gasLimit, [padToEven]),       // gas(Limit)
+          &to,                                           // to
+          web3.utils.toHex(value, [padToEven]),          // value
+          data,                                          // data
+          VarArrayCreate([0, 0], varVariant),            // accessList
+          web3.utils.toHex(v.ToByteArrayUnsigned),       // v
+          web3.utils.toHex(r.ToByteArrayUnsigned),       // r
+          web3.utils.toHex(s.ToByteArrayUnsigned)        // s
+        ])
+      );
+  finally
+    Signer.Free;
+  end;
+end;
+
+// send raw (aka signed) transaction.
+procedure sendTransaction(client: IWeb3; const raw: string; callback: TAsyncTxHash);
+begin
+  client.Call('eth_sendRawTransaction', [raw], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback('', err)
@@ -330,7 +412,7 @@ begin
 end;
 
 // send raw transaction, get the receipt, and get the reason if the transaction failed.
-procedure sendTransactionEx(client: TWeb3; const raw: string; callback: TAsyncReceipt);
+procedure sendTransactionEx(client: IWeb3; const raw: string; callback: TAsyncReceipt);
 begin
   // send the raw transaction
   sendTransaction(client, raw, procedure(hash: TTxHash; err: IError)
@@ -374,56 +456,14 @@ begin
   end);
 end;
 
-// 1. calculate the current gas price, then
-// 2. calculate the nonce, then
-// 3. sign the transaction, then
-// 4. send the raw transaction.
-procedure sendTransaction(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  &to     : TAddress;
-  value   : TWei;
-  callback: TAsyncTxHash);
-begin
-  web3.eth.gas.getGasPrice(client, procedure(gasPrice: BigInteger; err: IError)
-  begin
-    if Assigned(err) then
-      callback('', err)
-    else
-      sendTransaction(client, from, &to, value, gasPrice, 21000, callback);
-  end);
-end;
-
 // 1. calculate the nonce, then
-// 2. calculate the current gas price, then
-// 3. sign the transaction, then
-// 4. send the raw transaction, then
-// 5. get the transaction receipt, then
-// 6. get the reason if the transaction failed.
-procedure sendTransactionEx(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  &to     : TAddress;
-  value   : TWei;
-  callback: TAsyncReceipt);
-begin
-  web3.eth.gas.getGasPrice(client, procedure(gasPrice: BigInteger; err: IError)
-  begin
-    if Assigned(err) then
-      callback(nil, err)
-    else
-      sendTransactionEx(client, from, &to, value, gasPrice, 21000, callback);
-  end);
-end;
-
-// calculate the nonce, then sign the transaction, then send the transaction.
+// 2. sign the transaction, then
+// 3. send the raw transaction.
 procedure sendTransaction(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   &to     : TAddress;
   value   : TWei;
-  gasPrice: TWei;
-  gasLimit: TWei;
   callback: TAsyncTxHash);
 begin
   from.Address(procedure(addr: TAddress; err: IError)
@@ -436,20 +476,19 @@ begin
         if Assigned(err) then
           callback('', err)
         else
-          signTransaction(client, nonce, from, &to, value, '', gasPrice, gasLimit, 21000,
-            procedure(const sig: string; err: IError)
-            begin
-              if Assigned(err) then
-                callback('', err)
-              else
-                sendTransaction(client, sig, procedure(hash: TTxHash; err: IError)
-                begin
-                  if Assigned(err) and (err.Message = 'nonce too low') then
-                    sendTransaction(client, from, &to, value, gasPrice, gasLimit, callback)
-                  else
-                    callback(hash, err);
-                end);
-            end);
+          signTransaction(client, nonce, from, &to, value, '', 21000, 21000, procedure(const sig: string; err: IError)
+          begin
+            if Assigned(err) then
+              callback('', err)
+            else
+              sendTransaction(client, sig, procedure(hash: TTxHash; err: IError)
+              begin
+                if Assigned(err) and (err.Message = 'nonce too low') then
+                  sendTransaction(client, from, &to, value, callback)
+                else
+                  callback(hash, err);
+              end);
+          end);
       end);
   end);
 end;
@@ -460,12 +499,10 @@ end;
 // 4. get the transaction receipt, then
 // 5. get the reason if the transaction failed.
 procedure sendTransactionEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   &to     : TAddress;
   value   : TWei;
-  gasPrice: TWei;
-  gasLimit: TWei;
   callback: TAsyncReceipt);
 begin
   from.Address(procedure(addr: TAddress; err: IError)
@@ -478,9 +515,7 @@ begin
         if Assigned(err) then
           callback(nil, err)
         else
-          signTransaction(
-            client, nonce, from, &to, value, '', gasPrice, gasLimit, 21000,
-          procedure(const sig: string; err: IError)
+          signTransaction(client, nonce, from, &to, value, '', 21000, 21000, procedure(const sig: string; err: IError)
           begin
             if Assigned(err) then
               callback(nil, err)
@@ -488,7 +523,7 @@ begin
               sendTransactionEx(client, sig, procedure(rcpt: ITxReceipt; err: IError)
               begin
                 if Assigned(err) and (err.Message = 'nonce too low') then
-                  sendTransactionEx(client, from, &to, value, gasPrice, gasLimit, callback)
+                  sendTransactionEx(client, from, &to, value, callback)
                 else
                   callback(rcpt, err);
               end);
@@ -506,14 +541,17 @@ type
   public
     constructor Create(aJsonObject: TJsonObject);
     destructor Destroy; override;
+    function &type: Byte;
     function ToString: string; override;
-    function blockNumber: BigInteger; // block number where this transaction was in. null when its pending.
-    function from: TAddress;          // address of the sender.
-    function gasLimit: TWei;          // gas provided by the sender.
-    function gasPrice: TWei;          // gas price provided by the sender in Wei.
-    function input: string;           // the data send along with the transaction.
-    function &to: TAddress;           // address of the receiver. null when its a contract creation transaction.
-    function value: TWei;             // value transferred in Wei.
+    function blockNumber: BigInteger;    // block number where this transaction was in. null when its pending.
+    function from: TAddress;             // address of the sender.
+    function gasLimit: BigInteger;       // gas limit provided by the sender.
+    function gasPrice: TWei;             // gas price provided by the sender in Wei.
+    function maxPriorityFeePerGas: TWei; // EIP-1559-only
+    function maxFeePerGas: TWei;         // EIP-1559-only
+    function input: string;              // the data send along with the transaction.
+    function &to: TAddress;              // address of the receiver. null when its a contract creation transaction.
+    function value: TWei;                // value transferred in Wei.
   end;
 
 constructor TTxn.Create(aJsonObject: TJsonObject);
@@ -526,6 +564,14 @@ destructor TTxn.Destroy;
 begin
   if Assigned(FJsonObject) then FJsonObject.Free;
   inherited Destroy;
+end;
+
+function TTxn.&type: Byte;
+begin
+  if (Self.maxPriorityFeePerGas > 0) or (Self.maxFeePerGas > 0) then
+    Result := 2 // EIP-1559
+  else
+    Result := 0; // Legacy
 end;
 
 function TTxn.ToString: string;
@@ -545,8 +591,8 @@ begin
   Result := TAddress.New(getPropAsStr(FJsonObject, 'from'));
 end;
 
-// gas provided by the sender.
-function TTxn.gasLimit: TWei;
+// gas limit provided by the sender.
+function TTxn.gasLimit: BigInteger;
 begin
   Result := getPropAsStr(FJsonObject, 'gas', '0x5208');
 end;
@@ -555,6 +601,18 @@ end;
 function TTxn.gasPrice: TWei;
 begin
   Result := getPropAsStr(FJsonObject, 'gasPrice', '0x0');
+end;
+
+// EIP-1559-only
+function TTxn.maxPriorityFeePerGas: TWei;
+begin
+  Result := getPropAsStr(FJsonObject, 'maxPriorityFeePerGas', '0x0');
+end;
+
+// EIP-1559-only
+function TTxn.maxFeePerGas: TWei;
+begin
+  Result := getPropAsStr(FJsonObject, 'maxFeePerGas', '0x0');
 end;
 
 // the data send along with the transaction.
@@ -576,9 +634,9 @@ begin
 end;
 
 // returns the information about a transaction requested by transaction hash.
-procedure getTransaction(client: TWeb3; hash: TTxHash; callback: TAsyncTxn);
+procedure getTransaction(client: IWeb3; hash: TTxHash; callback: TAsyncTxn);
 begin
-  client.JsonRpc.Send(client.URL, client.Security, 'eth_getTransactionByHash', [hash], procedure(resp: TJsonObject; err: IError)
+  client.Call('eth_getTransactionByHash', [hash], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback(nil, TTxError.Create(hash, err.Message))
@@ -597,11 +655,12 @@ type
     constructor Create(aJsonObject: TJsonObject);
     destructor Destroy; override;
     function ToString: string; override;
-    function txHash: TTxHash; // hash of the transaction.
-    function from: TAddress;  // address of the sender.
-    function &to: TAddress;   // address of the receiver. null when it's a contract creation transaction.
-    function gasUsed: TWei;   // the amount of gas used by this specific transaction.
-    function status: Boolean; // success or failure.
+    function txHash: TTxHash;         // hash of the transaction.
+    function from: TAddress;          // address of the sender.
+    function &to: TAddress;           // address of the receiver. null when it's a contract creation transaction.
+    function gasUsed: BigInteger;     // the amount of gas used by this specific transaction.
+    function status: Boolean;         // success or failure.
+    function effectiveGasPrice: TWei; // eip-1559-only
   end;
 
 constructor TTxReceipt.Create(aJsonObject: TJsonObject);
@@ -640,7 +699,7 @@ begin
 end;
 
 // the amount of gas used by this specific transaction.
-function TTxReceipt.gasUsed: TWei;
+function TTxReceipt.gasUsed: BigInteger;
 begin
   Result := getPropAsStr(FJsonObject, 'gasUsed', '0x0');
 end;
@@ -651,19 +710,23 @@ begin
   Result := getPropAsStr(FJsonObject, 'status', '0x1') = '0x1';
 end;
 
-// returns the receipt of a transaction by transaction hash.
-procedure getTransactionReceipt(client: TWeb3; hash: TTxHash; callback: TAsyncReceipt);
+// eip-1559-ony
+function TTxReceipt.effectiveGasPrice: TWei;
 begin
-  client.JsonRpc.Send(client.URL, client.Security, 'eth_getTransactionReceipt', [hash], procedure(resp: TJsonObject; err: IError)
-  var
-    rcpt: TJsonObject;
+  Result := getPropAsStr(FJsonObject, 'effectiveGasPrice', '0x0');
+end;
+
+// returns the receipt of a transaction by transaction hash.
+procedure getTransactionReceipt(client: IWeb3; hash: TTxHash; callback: TAsyncReceipt);
+begin
+  client.Call('eth_getTransactionReceipt', [hash], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(nil, TTxError.Create(hash, err.Message));
       EXIT;
     end;
-    rcpt := web3.json.getPropAsObj(resp, 'result');
+    var rcpt := web3.json.getPropAsObj(resp, 'result');
     if Assigned(rcpt) then
       callback(TTxReceipt.Create(rcpt), nil)
     else
@@ -677,7 +740,7 @@ resourcestring
   TX_UNKNOWN_ERROR = 'Unknown error encountered during contract execution';
 
 // get the revert reason for a failed transaction.
-procedure getTransactionRevertReason(client: TWeb3; rcpt: ITxReceipt; callback: TAsyncString);
+procedure getTransactionRevertReason(client: IWeb3; rcpt: ITxReceipt; callback: TAsyncString);
 begin
   if rcpt.status then
   begin
@@ -708,22 +771,33 @@ begin
     end;
 
     // eth_call the failed transaction *with the block number from the receipt*
-    obj := web3.json.unmarshal(Format(
-      '{"to": %s, "data": %s, "from": %s, "value": %s, "gas": %s, "gasPrice": %s}', [
-        web3.json.quoteString(string(txn.&to), '"'),
-        web3.json.quoteString(txn.input, '"'),
-        web3.json.quoteString(string(txn.from), '"'),
-        web3.json.quoteString(toHex(txn.value, [zeroAs0x0]), '"'),
-        web3.json.quoteString(toHex(txn.gasLimit, [zeroAs0x0]), '"'),
-        web3.json.quoteString(toHex(txn.gasPrice, [zeroAs0x0]), '"')
-      ]
-    )) as TJsonObject;
+    if txn.&type >= 2 then
+      obj := web3.json.unmarshal(Format(
+        '{"to": %s, "data": %s, "from": %s, "value": %s, "gas": %s, "maxPriorityFeePerGas": %s, "maxFeePerGas": %s}', [
+          web3.json.quoteString(string(txn.&to), '"'),
+          web3.json.quoteString(txn.input, '"'),
+          web3.json.quoteString(string(txn.from), '"'),
+          web3.json.quoteString(toHex(txn.value, [zeroAs0x0]), '"'),
+          web3.json.quoteString(toHex(txn.gasLimit, [zeroAs0x0]), '"'),
+          web3.json.quoteString(toHex(txn.maxPriorityFeePerGas, [zeroAs0x0]), '"'),
+          web3.json.quoteString(toHex(txn.maxFeePerGas, [zeroAs0x0]), '"')
+        ]
+      )) as TJsonObject
+    else
+      obj := web3.json.unmarshal(Format(
+        '{"to": %s, "data": %s, "from": %s, "value": %s, "gas": %s, "gasPrice": %s}', [
+          web3.json.quoteString(string(txn.&to), '"'),
+          web3.json.quoteString(txn.input, '"'),
+          web3.json.quoteString(string(txn.from), '"'),
+          web3.json.quoteString(toHex(txn.value, [zeroAs0x0]), '"'),
+          web3.json.quoteString(toHex(txn.gasLimit, [zeroAs0x0]), '"'),
+          web3.json.quoteString(toHex(txn.gasPrice, [zeroAs0x0]), '"')
+        ]
+      )) as TJsonObject;
+
+    if Assigned(obj) then
     try
-      client.JsonRpc.Send(client.URL, client.Security, 'eth_call', [obj, toHex(txn.blockNumber)], procedure(resp: TJsonObject; err: IError)
-      var
-        len: Int64;
-        decoded,
-        encoded: string;
+      client.Call('eth_call', [obj, toHex(txn.blockNumber)], procedure(resp: TJsonObject; err: IError)
       begin
         if Assigned(err) then
         begin
@@ -732,20 +806,20 @@ begin
         end;
 
         // parse the reason from the response
-        encoded := web3.json.getPropAsStr(resp, 'result');
+        var encoded := web3.json.getPropAsStr(resp, 'result');
         // trim the 0x prefix
-        Delete(encoded, Low(encoded), 2);
+        Delete(encoded, System.Low(encoded), 2);
         if encoded.Length = 0 then
         begin
           callback(TX_UNKNOWN_ERROR, nil);
           EXIT;
         end;
         // get the length of the revert reason
-        len := StrToInt64('$' + Copy(encoded, Low(encoded) + 8 + 64, 64));
+        var len := StrToInt64('$' + Copy(encoded, System.Low(encoded) + 8 + 64, 64));
         // using the length and known offset, extract the revert reason
-        encoded := Copy(encoded, Low(encoded) + 8 + 128, len * 2);
+        encoded := Copy(encoded, System.Low(encoded) + 8 + 128, len * 2);
         // convert reason from hex to string
-        decoded := TEncoding.UTF8.GetString(fromHex(encoded));
+        var decoded := TEncoding.UTF8.GetString(fromHex(encoded));
 
         callback(decoded, nil);
       end);
@@ -756,25 +830,9 @@ begin
 end;
 
 procedure cancelTransaction(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   nonce   : BigInteger;
-  callback: TAsyncTxHash);
-begin
-  web3.eth.gas.getGasPrice(client, procedure(gasPrice: BigInteger; err: IError)
-  begin
-    if Assigned(err) then
-      callback('', err)
-    else
-      cancelTransaction(client, from, nonce, gasPrice, callback);
-  end);
-end;
-
-procedure cancelTransaction(
-  client  : TWeb3;
-  from    : TPrivateKey;
-  nonce   : BigInteger;
-  gasPrice: TWei;
   callback: TAsyncTxHash);
 begin
   from.Address(procedure(addr: TAddress; err: IError)
@@ -782,8 +840,7 @@ begin
     if Assigned(err) then
       callback('', err)
     else
-      signTransaction(client, nonce, from, addr, 0, '', gasPrice, 21000, 21000,
-      procedure(const sig: string; err: IError)
+      signTransaction(client, nonce, from, addr, 0, '', 21000, 21000, procedure(const sig: string; err: IError)
       begin
         if Assigned(err) then
           callback('', err)

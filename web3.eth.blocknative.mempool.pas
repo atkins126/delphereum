@@ -5,7 +5,20 @@
 {             Copyright(c) 2021 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {                    https://docs.blocknative.com/websocket                    }
 {                                                                              }
@@ -140,7 +153,7 @@ var
 begin
   eventCode := getPropAsStr(event, 'eventCode');
   if eventCode <> '' then
-    for Result := Low(TEventCode) to High(TEventCode) do
+    for Result := System.Low(TEventCode) to High(TEventCode) do
       if EVENT_CODE[Result] = eventCode then
         EXIT;
   Result := ecUnknown;
@@ -166,17 +179,22 @@ function TCustomMempool.CreatePayload(
   const eventCode   : string): string;
 const
   NETWORK: array[TChain] of string = (
-    'main',    // Mainnet,
-    'ropsten', // Ropsten
-    'rinkeby', // Rinkeby
-    'goerli',  // Goerli
-    '',        // Optimism
-    '',        // RSK_main_net
-    '',        // RSK_test_net
-    'kovan',   // Kovan
-    '',        // BSC_main_net
-    '',        // BSC_test_net
-    'xdai'     // xDai
+    'main',       // Mainnet,
+    'ropsten',    // Ropsten
+    'rinkeby',    // Rinkeby
+    'kovan',      // Kovan
+    'goerli',     // Goerli
+    '',           // Optimism
+    '',           // Optimism_test_net
+    '',           // RSK
+    '',           // RSK_test_net
+    'bsc-main',   // BSC
+    '',           // BSC_test_net
+    'xdai',       // xDai
+    'matic-main', // Polygon
+    '',           // Polygon_test_net
+    '',           // Arbitrum
+    ''            // Arbitrum_test_net
   );
 begin
   Result := Format('{' +

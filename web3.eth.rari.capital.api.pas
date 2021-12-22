@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -24,10 +37,10 @@ uses
 
 type
   IRariStats = interface
-    function TVL          : Extended;
-    function StablePoolAPY: Extended;
-    function EthPoolAPY   : Extended;
-    function YieldPoolAPY : Extended;
+    function StablePoolAPY: Double;
+    function EthPoolAPY   : Double;
+    function YieldPoolAPY : Double;
+    function DaiPoolAPY   : Double;
   end;
 
   TAsyncRariStats = reference to procedure(stats: IRariStats; err: IError);
@@ -50,10 +63,10 @@ type
   private
     FJsonObject: TJsonObject;
   public
-    function TVL          : Extended;
-    function StablePoolAPY: Extended;
-    function EthPoolAPY   : Extended;
-    function YieldPoolAPY : Extended;
+    function StablePoolAPY: Double;
+    function EthPoolAPY   : Double;
+    function YieldPoolAPY : Double;
+    function DaiPoolAPY   : Double;
     constructor Create(aJsonObject: TJsonObject);
     destructor Destroy; override;
   end;
@@ -71,24 +84,24 @@ begin
   inherited Destroy;
 end;
 
-function TRariStats.TVL: Extended;
+function TRariStats.StablePoolAPY: Double;
 begin
-  Result := getPropAsExt(FJsonObject, 'tvl');
+  Result := getPropAsDbl(FJsonObject, 'stablePoolAPY');
 end;
 
-function TRariStats.StablePoolAPY: Extended;
+function TRariStats.EthPoolAPY: Double;
 begin
-  Result := getPropAsExt(FJsonObject, 'stablePoolAPY');
+  Result := getPropAsDbl(FJsonObject, 'ethPoolAPY');
 end;
 
-function TRariStats.EthPoolAPY: Extended;
+function TRariStats.YieldPoolAPY: Double;
 begin
-  Result := getPropAsExt(FJsonObject, 'ethPoolAPY');
+  Result := getPropAsDbl(FJsonObject, 'yieldPoolAPY');
 end;
 
-function TRariStats.YieldPoolAPY: Extended;
+function TRariStats.DaiPoolAPY: Double;
 begin
-  Result := getPropAsExt(FJsonObject, 'yieldPoolAPY');
+  Result := getPropAsDbl(FJsonObject, 'daiPoolAPY');
 end;
 
 {------------------------------ global functions ------------------------------}

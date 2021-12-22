@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -31,18 +44,18 @@ type
   TIdle = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure IdleToUnderlying(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToIdle(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
@@ -52,28 +65,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -82,13 +95,13 @@ type
 
   TIdleViewHelper = class(TCustomContract)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure GetFullAPR(idleToken: TAddress; callback: TAsyncQuantity);
   end;
 
   TIdleToken = class abstract(TERC20)
   public
-    constructor Create(aClient: TWeb3); reintroduce; overload; virtual; abstract;
+    constructor Create(aClient: IWeb3); reintroduce; overload; virtual; abstract;
     procedure Token(callback: TAsyncAddress);
     procedure GetAvgAPR(callback: TAsyncQuantity);
     procedure GetFullAPR(callback: TAsyncQuantity);
@@ -104,17 +117,22 @@ type
 
   TIdleDAI = class(TIdleToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TIdleUSDC = class(TIdleToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TIdleUSDT = class(TIdleToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
+  end;
+
+  TIdleTUSD = class(TIdleToken)
+  public
+    constructor Create(aClient: IWeb3); override;
   end;
 
 implementation
@@ -127,13 +145,14 @@ const
     TIdleDAI,
     TIdleUSDC,
     TIdleUSDT,
-    nil
+    nil,
+    TIdleTUSD
   );
 
 { TIdle }
 
 class procedure TIdle.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -170,7 +189,7 @@ begin
 end;
 
 class procedure TIdle.IdleToUnderlying(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BigInteger;
   callback: TAsyncQuantity);
@@ -183,7 +202,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) * (price.AsExtended / 1e18)), nil);
+        callback(reserve.Scale(reserve.Unscale(amount) * (price.AsDouble / 1e18)), nil);
     end);
   finally
     IdleToken.free;
@@ -191,7 +210,7 @@ begin
 end;
 
 class procedure TIdle.UnderlyingToIdle(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
@@ -204,7 +223,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(reserve.Scale(reserve.Unscale(amount) / (price.AsExtended / 1e18)), nil);
+        callback(reserve.Scale(reserve.Unscale(amount) / (price.AsDouble / 1e18)), nil);
     end);
   finally
     IdleToken.free;
@@ -219,35 +238,38 @@ end;
 class function TIdle.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
   Result := (
-    (chain = Mainnet) and (reserve = USDT)
+    (chain = Mainnet) and (reserve in [USDT, TUSD])
   ) or (
     (chain in [Mainnet, Kovan]) and (reserve in [DAI, USDC])
   );
 end;
 
 class procedure TIdle.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
 begin
   var IdleToken := IdleTokenClass[reserve].Create(client);
-  if Assigned(IdleToken) then
-  try
-    IdleToken.GetFullAPR(procedure(apr: BigInteger; err: IError)
+  IdleToken.GetFullAPR(procedure(apr1: BigInteger; err1: IError)
+  begin
+    if Assigned(err1) then
     begin
-      if Assigned(err) then
-        callback(0, err)
-      else
-        callback(apr.AsExtended / 1e18, nil);
-    end);
-  finally
-    IdleToken.Free;
-  end;
+      IdleToken.GetAvgAPR(procedure(apr2: BigInteger; err2: IError)
+      begin
+        if Assigned(err2) then
+          callback(0, err2)
+        else
+          callback(apr2.AsDouble / 1e18, nil);
+      end);
+      EXIT;
+    end;
+    callback(apr1.AsDouble / 1e18, nil);
+  end);
 end;
 
 class procedure TIdle.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -263,7 +285,7 @@ begin
     var IdleToken := IdleTokenClass[reserve].Create(client);
     if Assigned(IdleToken) then
     try
-      IdleToken.MintIdleToken(from, amount, True, ADDRESS_ZERO, callback);
+      IdleToken.MintIdleToken(from, amount, True, EMPTY_ADDRESS, callback);
     finally
       IdleToken.Free;
     end;
@@ -271,7 +293,7 @@ begin
 end;
 
 class procedure TIdle.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -302,7 +324,7 @@ begin
 end;
 
 class procedure TIdle.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -343,7 +365,7 @@ begin
 end;
 
 class procedure TIdle.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -376,7 +398,7 @@ end;
 
 { TIdleViewHelper }
 
-constructor TIdleViewHelper.Create(aClient: TWeb3);
+constructor TIdleViewHelper.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, '0xae2Ebae0a2bC9a44BdAa8028909abaCcd336b8f5');
 end;
@@ -394,7 +416,7 @@ begin
   web3.eth.call(Client, Contract, 'token()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -446,7 +468,7 @@ end;
 
 { TIdleDAI }
 
-constructor TIdleDAI.Create(aClient: TWeb3);
+constructor TIdleDAI.Create(aClient: IWeb3);
 begin
   if aClient.Chain = Kovan then
     inherited Create(aClient, '0x295CA5bC5153698162dDbcE5dF50E436a58BA21e')
@@ -456,7 +478,7 @@ end;
 
 { TIdleUSDC }
 
-constructor TIdleUSDC.Create(aClient: TWeb3);
+constructor TIdleUSDC.Create(aClient: IWeb3);
 begin
   if aClient.Chain = Kovan then
     inherited Create(aClient, '0x0de23D3bc385a74E2196cfE827C8a640B8774B9f')
@@ -466,9 +488,16 @@ end;
 
 { TIdleUSDT }
 
-constructor TIdleUSDT.Create(aClient: TWeb3);
+constructor TIdleUSDT.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, '0xF34842d05A1c888Ca02769A633DF37177415C2f8');
+end;
+
+{ TIdleTUSD }
+
+constructor TIdleTUSD.Create(aClient: IWeb3);
+begin
+  inherited Create(aClient, '0xc278041fDD8249FE4c1Aad1193876857EEa3D68c');
 end;
 
 end.

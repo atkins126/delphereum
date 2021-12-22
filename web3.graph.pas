@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -46,35 +59,27 @@ uses
   web3.json;
 
 function execute(const URL, query: string; callback: TAsyncJsonObject): IAsyncResult;
-var
-  source: TStream;
-  errors: TJsonArray;
 begin
-  source := TStringStream.Create(query);
   web3.http.post(
     URL,
-    source,
+    query,
     [TNetHeader.Create('Content-Type', 'application/graphql')],
     procedure(resp: TJsonObject; err: IError)
     begin
-      try
-        if Assigned(err) then
-        begin
-          callback(nil, err);
-          EXIT;
-        end;
-        // did we receive an error?
-        errors := web3.json.getPropAsArr(resp, 'errors');
-        if Assigned(errors) and (errors.Count > 0) then
-        begin
-          callback(resp, TGraphError.Create(web3.json.getPropAsStr(errors.Items[0], 'message')));
-          EXIT;
-        end;
-        // if we reached this far, then we have a valid response object
-        callback(resp, nil);
-      finally
-        source.Free;
+      if Assigned(err) then
+      begin
+        callback(nil, err);
+        EXIT;
       end;
+      // did we receive an error?
+      var errors := web3.json.getPropAsArr(resp, 'errors');
+      if Assigned(errors) and (errors.Count > 0) then
+      begin
+        callback(resp, TGraphError.Create(web3.json.getPropAsStr(errors.Items[0], 'message')));
+        EXIT;
+      end;
+      // if we reached this far, then we have a valid response object
+      callback(resp, nil);
     end
   );
 end;

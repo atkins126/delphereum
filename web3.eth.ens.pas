@@ -5,7 +5,20 @@
 {             Copyright(c) 2019 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -20,10 +33,13 @@ uses
   web3,
   web3.eth.types;
 
-function  namehash(const name: string): string;
-procedure resolver(client: TWeb3; const name: string; callback: TAsyncAddress);
-procedure addr    (client: TWeb3; const name: string; callback: TAsyncAddress);
-procedure reverse (client: TWeb3; addr: TAddress; callback: TAsyncString);
+function namehash(const name: string): string;
+// resolve a name to an Ethereum address
+procedure addr(client: IWeb3; const name: string; callback: TAsyncAddress);
+// retrieves text metadata for a name
+procedure text(client: IWeb3; const name, key: string; callback: TAsyncTuple);
+// reverse resolution maps from an address back to a name
+procedure reverse(client: IWeb3; addr: TAddress; callback: TAsyncString);
 
 implementation
 
@@ -65,41 +81,57 @@ begin
   Result := web3.utils.toHex(node);
 end;
 
-procedure resolver(client: TWeb3; const name: string; callback: TAsyncAddress);
+procedure resolver(client: IWeb3; const name: string; callback: TAsyncAddress);
 begin
   web3.eth.call(client, ENS_REGISTRY, 'resolver(bytes32)', [namehash(name)], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
 end;
 
-procedure addr(client: TWeb3; const name: string; callback: TAsyncAddress);
+// resolve a name to an Ethereum address
+procedure addr(client: IWeb3; const name: string; callback: TAsyncAddress);
 begin
   resolver(client, name, procedure(resolver: TAddress; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       web3.eth.call(client, resolver, 'addr(bytes32)', [namehash(name)], procedure(const hex: string; err: IError)
       begin
         if Assigned(err) then
-          callback(ADDRESS_ZERO, err)
+          callback(EMPTY_ADDRESS, err)
         else
           callback(TAddress.New(hex), nil);
       end);
   end);
 end;
 
-procedure reverse(client: TWeb3; addr: TAddress; callback: TAsyncString);
+// retrieves text metadata for a name.
+// each name may have multiple pieces of metadata, identified by a unique string key.
+// if no text data exists for node with the key key, the empty string is returned.
+procedure text(client: IWeb3; const name, key: string; callback: TAsyncTuple);
+begin
+  resolver(client, name, procedure(resolver: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.call(client, resolver, 'text(bytes32,string)', [namehash(name), key], callback);
+  end);
+end;
+
+// reverse resolution maps from an address back to a name
+procedure reverse(client: IWeb3; addr: TAddress; callback: TAsyncString);
 var
   name: string;
 begin
   name := string(addr).ToLower + '.addr.reverse';
-  while Copy(name, Low(name), 2) = '0x' do
-    Delete(name, Low(name), 2);
+  while Copy(name, System.Low(name), 2) = '0x' do
+    Delete(name, System.Low(name), 2);
   resolver(client, name, procedure(resolver: TAddress; err: IError)
   begin
     if Assigned(err) then

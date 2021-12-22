@@ -5,7 +5,20 @@
 {             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -55,8 +68,8 @@ type
 function fromWei(wei: TWei; &to: TEthUnit; decimals: Byte = 18): string;
 function toWei(input: string; &unit: TEthUnit): TWei;
 
-function EthToFloat(const value: string): Extended;
-function FloatToEth(value: Extended): string;
+function EthToFloat(const value: string): Double;
+function FloatToEth(value: Double): string;
 
 implementation
 
@@ -131,9 +144,9 @@ begin
   base := UnitToWei[&unit];
   baseLen := UnitToWei[&unit].Length;
   // is it negative?
-  negative := (input.Length > 0) and (input[Low(input)] = '-');
+  negative := (input.Length > 0) and (input[System.Low(input)] = '-');
   if negative then
-    Delete(input, Low(input), 1);
+    Delete(input, System.Low(input), 1);
   if (input = '') or (input = '.') then
     raise EWeb3.CreateFmt('Error while converting %s to wei. Invalid value.', [input]);
   // split it into a whole and fractional part
@@ -154,7 +167,7 @@ begin
     Result := BigInteger.Negate(Result);
 end;
 
-function EthToFloat(const value: string): Extended;
+function EthToFloat(const value: string): Double;
 var
   FS: TFormatSettings;
 begin
@@ -163,7 +176,7 @@ begin
   Result := StrToFloat(value, FS);
 end;
 
-function FloatToEth(value: Extended): string;
+function FloatToEth(value: Double): string;
 var
   FS: TFormatSettings;
 begin

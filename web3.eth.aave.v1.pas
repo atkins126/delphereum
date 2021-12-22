@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {            need tokens to test with?                                         }
 {            1. make sure your wallet is set to the relevant testnet           }
@@ -44,7 +57,7 @@ type
       reserve : TReserve;
       callback: TAsyncAddress);
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -55,28 +68,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -86,7 +99,7 @@ type
   // Global addresses register of the protocol. This contract is immutable and the address will never change.
   TAaveAddressesProvider = class(TCustomContract)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure GetLendingPool(callback: TAsyncAddress);
     procedure GetLendingPoolCore(callback: TAsyncAddress);
   end;
@@ -151,7 +164,7 @@ begin
     end;
     EXIT;
   end;
-  callback(ADDRESS_ZERO,
+  callback(EMPTY_ADDRESS,
     TError.Create('%s is not supported on %s', [
       GetEnumName(TypeInfo(TReserve), Ord(reserve)), GetEnumName(TypeInfo(TChain), Ord(chain))
     ])
@@ -160,7 +173,7 @@ end;
 
 // Approve the LendingPoolCore contract to move your asset.
 class procedure TAave.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -214,7 +227,7 @@ end;
 
 // Returns the annual yield as a percentage with 4 decimals.
 class procedure TAave.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
@@ -250,7 +263,7 @@ end;
 
 // Global helper function that deposits an underlying asset into the reserve.
 class procedure TAave.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -290,7 +303,7 @@ end;
 
 // Returns how much underlying assets you are entitled to.
 class procedure TAave.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -334,7 +347,7 @@ end;
 
 // Global helper function that redeems your balance of aTokens for the underlying asset.
 class procedure TAave.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -357,7 +370,7 @@ begin
 end;
 
 class procedure TAave.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -413,7 +426,7 @@ end;
 
 { TAaveAddressesProvider }
 
-constructor TAaveAddressesProvider.Create(aClient: TWeb3);
+constructor TAaveAddressesProvider.Create(aClient: IWeb3);
 begin
   // https://docs.aave.com/developers/developing-on-aave/deployed-contract-instances
   if aClient.Chain = Mainnet then
@@ -435,7 +448,7 @@ begin
   web3.eth.call(Client, Contract, 'getLendingPool()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -448,7 +461,7 @@ begin
   web3.eth.call(Client, Contract, 'getLendingPoolCore()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -510,7 +523,7 @@ begin
   GetReserveData(reserve, procedure(tup: TTuple; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(tup[11].toAddress, nil);
   end);

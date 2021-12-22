@@ -5,7 +5,20 @@
 {             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -52,7 +65,7 @@ function fromHex(hex: string): TBytes;
 
 function  sha3(const hex: string): TBytes; overload;
 function  sha3(const buf: TBytes): TBytes; overload;
-procedure sha3(client: TWeb3; const hex: string; callback: TAsyncString); overload;
+procedure sha3(client: IWeb3; const hex: string; callback: TAsyncString); overload;
 
 implementation
 
@@ -181,9 +194,9 @@ begin
   Result := Length(str) > 1;
   if Result then
   begin
-    Result := Copy(str, Low(str), Length(prefix)) = prefix;
+    Result := Copy(str, System.Low(str), Length(prefix)) = prefix;
     if Result then
-      for I := Low(str) + Length(prefix) to High(str) do
+      for I := System.Low(str) + Length(prefix) to High(str) do
       begin
         Result := CharInSet(str[I], ['0'..'9', 'a'..'f', 'A'..'F']);
         if not Result then
@@ -197,12 +210,12 @@ var
   I: Integer;
 begin
   hex := Trim(hex);
-  while Copy(hex, Low(hex), 2) = '0x' do
-    Delete(hex, Low(hex), 2);
+  while Copy(hex, System.Low(hex), 2) = '0x' do
+    Delete(hex, System.Low(hex), 2);
   if hex.Length mod 2 > 0 then
     hex := '0' + hex; // pad to even
   SetLength(Result, Length(hex) div 2);
-  for I := Low(hex) to Length(hex) div 2 do
+  for I := System.Low(hex) to Length(hex) div 2 do
     Result[I - 1] := StrToInt('$' + Copy(hex, (I - 1) * 2 + 1, 2));
 end;
 
@@ -223,9 +236,9 @@ begin
   end;
 end;
 
-procedure sha3(client: TWeb3; const hex: string; callback: TAsyncString);
+procedure sha3(client: IWeb3; const hex: string; callback: TAsyncString);
 begin
-  client.JsonRpc.Send(client.URL, client.Security, 'web3_sha3', [hex], procedure(resp: TJsonObject; err: IError)
+  client.Call('web3_sha3', [hex], procedure(resp: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback('', err)

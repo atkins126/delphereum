@@ -5,7 +5,20 @@
 {             Copyright(c) 2021 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -29,7 +42,7 @@ type
   TOrigin = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -40,28 +53,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       _reserve: TReserve;
       period  : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       _reserve: TReserve;
       amount  : BigInteger;
@@ -71,7 +84,7 @@ type
 type
   TOriginVault = class(TCustomContract)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     class function DeployedAt: TAddress;
     procedure Mint(
       from    : TPrivateKey;
@@ -87,7 +100,7 @@ type
 type
   TOriginDollar = class(TERC20)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure RebasingCreditsPerToken(const block: string; callback: TAsyncQuantity);
     procedure APY(period: TPeriod; callback: TAsyncFloat);
   end;
@@ -103,7 +116,7 @@ uses
 { TOrigin }
 
 class procedure TOrigin.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -134,7 +147,7 @@ begin
 end;
 
 class procedure TOrigin.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   _reserve: TReserve;
   period  : TPeriod;
   callback: TAsyncFloat);
@@ -142,7 +155,7 @@ begin
   var ousd := TOriginDollar.Create(client);
   if Assigned(ousd) then
   begin
-    ousd.APY(period, procedure(apy: Extended; err: IError)
+    ousd.APY(period, procedure(apy: Double; err: IError)
     begin
       try
         callback(apy, err);
@@ -154,7 +167,7 @@ begin
 end;
 
 class procedure TOrigin.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -177,7 +190,7 @@ begin
 end;
 
 class procedure TOrigin.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -192,7 +205,7 @@ begin
         if reserve.Decimals = 1e18 then
           callback(balance, err)
         else
-          callback(reserve.Scale(balance.AsExtended / 1e18), err);
+          callback(reserve.Scale(balance.AsDouble / 1e18), err);
     end);
   finally
     ousd.Free;
@@ -200,7 +213,7 @@ begin
 end;
 
 class procedure TOrigin.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -215,7 +228,7 @@ begin
 end;
 
 class procedure TOrigin.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   _reserve: TReserve;
   amount  : BigInteger;
@@ -237,7 +250,7 @@ end;
 
 { TOriginVault }
 
-constructor TOriginVault.Create(aClient: TWeb3);
+constructor TOriginVault.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, Self.DeployedAt);
 end;
@@ -287,7 +300,7 @@ end;
 
 { TOriginDollar }
 
-constructor TOriginDollar.Create(aClient: TWeb3);
+constructor TOriginDollar.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, '0x2A8e1E676Ec238d8A992307B495b45B3fEAa5e86');
 end;
@@ -320,7 +333,7 @@ begin
           callback(0, err);
           EXIT;
         end;
-        callback(period.ToYear((1 / curr.AsExtended) / (1 / past.AsExtended) - 1) * 100, nil);
+        callback(period.ToYear((1 / curr.AsDouble) / (1 / past.AsDouble) - 1) * 100, nil);
       end);
     end);
   end);

@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {        need tokens to test with?                                             }
 {        1. make sure your wallet is set to the relevant testnet               }
@@ -40,18 +53,18 @@ type
   TFulcrum = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure TokenToUnderlying(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToToken(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
@@ -61,28 +74,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -112,7 +125,7 @@ type
     function  ListenForLatestBlock: Boolean; override;
     procedure OnLatestBlockMined(log: TLog); override;
   public
-    constructor Create(aClient: TWeb3); reintroduce; overload; virtual; abstract;
+    constructor Create(aClient: IWeb3); reintroduce; overload; virtual; abstract;
     //------- read from contract -----------------------------------------------
     procedure AssetBalanceOf(owner: TAddress; callback: TAsyncQuantity);
     procedure LoanTokenAddress(callback: TAsyncAddress);
@@ -128,17 +141,17 @@ type
 
   TiDAI = class(TiToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TiUSDC = class(TiToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
   TiUSDT = class(TiToken)
   public
-    constructor Create(aClient: TWeb3); override;
+    constructor Create(aClient: IWeb3); override;
   end;
 
 implementation
@@ -156,6 +169,7 @@ const
     TiDAI,
     TiUSDC,
     TiUSDT,
+    nil,
     nil
   );
 
@@ -163,7 +177,7 @@ const
 
 // Approve the iToken contract to move your underlying asset.
 class procedure TFulcrum.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -200,7 +214,7 @@ begin
 end;
 
 class procedure TFulcrum.TokenToUnderlying(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BigInteger;
   callback: TAsyncQuantity);
@@ -213,7 +227,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(BigInteger.Create(amount.AsExtended * (price.AsExtended / 1e18)), nil);
+        callback(BigInteger.Create(amount.AsDouble * (price.AsDouble / 1e18)), nil);
     end);
   finally
     iToken.Free;
@@ -221,7 +235,7 @@ begin
 end;
 
 class procedure TFulcrum.UnderlyingToToken(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
@@ -234,7 +248,7 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(BigInteger.Create(amount.AsExtended / (price.AsExtended / 1e18)), nil);
+        callback(BigInteger.Create(amount.AsDouble / (price.AsDouble / 1e18)), nil);
     end);
   finally
     iToken.Free;
@@ -253,7 +267,7 @@ end;
 
 // Returns the annual yield as a percentage with 4 decimals.
 class procedure TFulcrum.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
@@ -275,7 +289,7 @@ end;
 
 // Deposits an underlying asset into the lending pool.
 class procedure TFulcrum.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -301,7 +315,7 @@ end;
 
 // Returns how much underlying assets you are entitled to.
 class procedure TFulcrum.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -345,14 +359,14 @@ begin
       if reserve.Decimals = Power(10, decimals.AsInteger) then
         callback(balance, err)
       else
-        callback(reserve.Scale(balance.AsExtended / Power(10, decimals.AsInteger)), err);
+        callback(reserve.Scale(balance.AsDouble / Power(10, decimals.AsInteger)), err);
     end);
   end);
 end;
 
 // Redeems your balance of iTokens for the underlying asset.
 class procedure TFulcrum.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -401,7 +415,7 @@ begin
 end;
 
 class procedure TFulcrum.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -520,7 +534,7 @@ begin
   web3.eth.call(Client, Contract, 'loanTokenAddress()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -540,7 +554,7 @@ end;
 
 { TiDAI }
 
-constructor TiDAI.Create(aClient: TWeb3);
+constructor TiDAI.Create(aClient: IWeb3);
 begin
   // https://bzx.network/itokens
   if aClient.Chain = Mainnet then
@@ -554,7 +568,7 @@ end;
 
 { TiUSDC }
 
-constructor TiUSDC.Create(aClient: TWeb3);
+constructor TiUSDC.Create(aClient: IWeb3);
 begin
   // https://bzx.network/itokens
   if aClient.Chain = Mainnet then
@@ -568,7 +582,7 @@ end;
 
 { TiUSDT }
 
-constructor TiUSDT.Create(aClient: TWeb3);
+constructor TiUSDT.Create(aClient: IWeb3);
 begin
   // https://bzx.network/itokens
   if aClient.Chain = Mainnet then
@@ -577,7 +591,7 @@ begin
     if aClient.Chain = Kovan then
       inherited Create(aClient, '0x6b9F03e05423cC8D00617497890C0872FF33d4E8')
     else
-      if aClient.Chain = BSC_main_net then
+      if aClient.Chain = BSC then
         inherited Create(aClient, '0xf326b42a237086f1de4e7d68f2d2456fc787bc01')
       else
         raise EFulcrum.CreateFmt('iUSDT is not deployed on %s', [GetEnumName(TypeInfo(TChain), Integer(aClient.Chain))]);

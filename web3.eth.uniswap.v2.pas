@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -38,7 +51,7 @@ uses
 type
   TFactory = class(TCustomContract)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure GetPair(tokenA, tokenB: TAddress; callback: TAsyncAddress);
   end;
 
@@ -62,7 +75,7 @@ type
       deadline    : TUnixDateTime; // Unix timestamp after which the transaction will revert.
       callback    : TAsyncReceipt); overload;
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure WETH(callback: TAsyncAddress);
     procedure SwapExactTokensForETH(
       owner       : TPrivateKey; // Sender of the token, and recipient of the ETH.
@@ -95,7 +108,7 @@ implementation
 
 { TFactory }
 
-constructor TFactory.Create(aClient: TWeb3);
+constructor TFactory.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f');
 end;
@@ -109,13 +122,13 @@ begin
   begin
     if Assigned(err) then
     begin
-      callback(ADDRESS_ZERO, err);
+      callback(EMPTY_ADDRESS, err);
       EXIT;
     end;
     pair := TAddress.New(hex);
     if pair.IsZero then
     begin
-      callback(ADDRESS_ZERO, TError.Create('%s does not exist', [tokenA]));
+      callback(EMPTY_ADDRESS, TError.Create('%s does not exist', [tokenA]));
       EXIT;
     end;
     callback(pair, nil)
@@ -124,7 +137,7 @@ end;
 
 { TRouter02 }
 
-constructor TRouter02.Create(aClient: TWeb3);
+constructor TRouter02.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D');
 end;
@@ -135,7 +148,7 @@ begin
   call(Client, Contract, 'WETH()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -271,7 +284,7 @@ begin
   call(Client, Contract, 'token0()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -283,7 +296,7 @@ begin
   call(Client, Contract, 'token1()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);

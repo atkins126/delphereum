@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -37,11 +50,11 @@ type
   TdYdX = class(TLendingProtocol)
   protected
     class procedure TokenAddress(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       callback: TAsyncAddress);
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -52,28 +65,28 @@ type
       chain   : TChain;
       reserve : TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -86,8 +99,8 @@ type
   end;
 
   TSoloIndex = record
-    Borrow    : Extended;
-    Supply    : Extended;
+    Borrow    : Double;
+    Supply    : Double;
     LastUpdate: BigInteger;
   end;
 
@@ -97,8 +110,8 @@ type
     function Index         : TSoloIndex;    // Interest index of the market
     function PriceOracle   : TAddress;      // Contract address of the price oracle for this market
     function InterestSetter: TAddress;      // Contract address of the interest setter for this market
-    function MarginPremium : Extended;      // Multiplier on the marginRatio for this market
-    function SpreadPremium : Extended;      // Multiplier on the liquidationSpread for this market
+    function MarginPremium : Double;        // Multiplier on the marginRatio for this market
+    function SpreadPremium : Double;        // Multiplier on the liquidationSpread for this market
     function IsClosing     : Boolean;       // Whether additional borrows are allowed for this market
   end;
 
@@ -137,9 +150,10 @@ type
         3,  // DAI
         2,  // USDC
         -1, // USDT
-        -1  // mUSD
+        -1, // mUSD
+        -1  // TUSD
       );
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure GetAccountWei(owner: TAddress; marketId: Integer; callback: TAsyncQuantity);
     procedure GetEarningsRate(callback: TAsyncFloat);
     procedure GetMarket(marketId: Integer; callback: TAsyncSoloMarket);
@@ -178,7 +192,7 @@ const
 
 // Returns contract address of the associated ERC20 token
 class procedure TdYdX.TokenAddress(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   callback: TAsyncAddress);
 begin
@@ -188,7 +202,7 @@ begin
     dYdX.GetMarket(TSoloMargin.marketId[reserve], procedure(market: ISoloMarket; err: IError)
     begin
       if Assigned(err) then
-        callback(ADDRESS_ZERO, err)
+        callback(EMPTY_ADDRESS, err)
       else
         callback(market.Token, nil);
     end);
@@ -199,7 +213,7 @@ end;
 
 // Approve the Solo contract to move your tokens.
 class procedure TdYdX.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -239,7 +253,7 @@ end;
 
 // Returns the annual yield as a percentage.
 class procedure TdYdX.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
@@ -249,7 +263,7 @@ begin
   var dYdX := TSoloMargin.Create(client);
   if Assigned(dYdX) then
   begin
-    dYdX.GetMarketSupplyInterestRate(TSoloMargin.marketId[reserve], procedure(qty: Extended; err: IError)
+    dYdX.GetMarketSupplyInterestRate(TSoloMargin.marketId[reserve], procedure(qty: Double; err: IError)
     begin
       try
         if Assigned(err) then
@@ -264,7 +278,7 @@ begin
 end;
 
 class procedure TdYdX.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -289,7 +303,7 @@ begin
 end;
 
 class procedure TdYdX.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -304,7 +318,7 @@ begin
 end;
 
 class procedure TdYdX.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -327,7 +341,7 @@ begin
 end;
 
 class procedure TdYdX.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -360,8 +374,8 @@ type
     function Index         : TSoloIndex;
     function PriceOracle   : TAddress;
     function InterestSetter: TAddress;
-    function MarginPremium : Extended;
-    function SpreadPremium : Extended;
+    function MarginPremium : Double;
+    function SpreadPremium : Double;
     function IsClosing     : Boolean;
     constructor Create(aTuple: TTuple);
   end;
@@ -400,12 +414,12 @@ begin
   Result := FTuple[7].toAddress;
 end;
 
-function TSoloMarket.MarginPremium: Extended;
+function TSoloMarket.MarginPremium: Double;
 begin
   Result := FTuple[8].toInt64 / INTEREST_RATE_BASE;
 end;
 
-function TSoloMarket.SpreadPremium: Extended;
+function TSoloMarket.SpreadPremium: Double;
 begin
   Result := FTuple[9].toInt64 / INTEREST_RATE_BASE;
 end;
@@ -417,7 +431,7 @@ end;
 
 { TSoloMargin }
 
-constructor TSoloMargin.Create(aClient: TWeb3);
+constructor TSoloMargin.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, TSoloMargin.DeployedAt(aClient.Chain));
 end;
@@ -500,21 +514,21 @@ end;
 // https://github.com/dydxprotocol/solo/blob/master/src/modules/Getters.ts#L253
 procedure TSoloMargin.GetMarketSupplyInterestRate(marketId: Integer; callback: TAsyncFloat);
 begin
-  GetEarningsRate(procedure(earningsRate: Extended; err: IError)
+  GetEarningsRate(procedure(earningsRate: Double; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(0, err);
       EXIT;
     end;
-    GetMarketInterestRate(marketId, procedure(borrowInterestRate: Extended; err: IError)
+    GetMarketInterestRate(marketId, procedure(borrowInterestRate: Double; err: IError)
     begin
       if Assigned(err) then
       begin
         callback(0, err);
         EXIT;
       end;
-      GetMarketUtilization(marketId, procedure(utilization: Extended; err: IError)
+      GetMarketUtilization(marketId, procedure(utilization: Double; err: IError)
       begin
         if Assigned(err) then
           callback(0, err)
@@ -535,8 +549,8 @@ begin
       callback(0, err);
       EXIT;
     end;
-    var totalSupply := market.TotalPar.Supply.AsExtended * market.Index.Supply;
-    var totalBorrow := market.TotalPar.Borrow.AsExtended * market.Index.Borrow;
+    var totalSupply := market.TotalPar.Supply.AsDouble * market.Index.Supply;
+    var totalBorrow := market.TotalPar.Borrow.AsDouble * market.Index.Borrow;
     callback(totalBorrow / totalSupply, nil);
   end);
 end;

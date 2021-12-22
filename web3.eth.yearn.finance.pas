@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -33,50 +46,50 @@ type
   TyEarnCustom = class abstract(TLendingProtocol)
   strict private
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       yToken  : TyTokenClass;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure BalanceOf(
-      client  : TWeb3;
+      client  : IWeb3;
       yToken  : TyTokenClass;
       owner   : TAddress;
       callback: TAsyncQuantity);
     class procedure TokenToUnderlying(
-      client  : TWeb3;
+      client  : IWeb3;
       yToken  : TyTokenClass;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToToken(
-      client  : TWeb3;
+      client  : IWeb3;
       yToken  : TyTokenClass;
       amount  : BigInteger;
       callback: TAsyncQuantity);
   strict protected
     class procedure _APY(
-      client  : TWeb3;
+      client  : IWeb3;
       yToken  : TyTokenClass;
       period  : TPeriod;
       callback: TAsyncFloat);
     class procedure _Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       yToken  : TyTokenClass;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure _Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       yToken  : TyTokenClass;
       callback: TAsyncQuantity);
     class procedure _Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       yToken  : TyTokenClass;
       callback: TAsyncReceiptEx);
     class procedure _WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       yToken  : TyTokenClass;
       amount  : BigInteger;
@@ -85,7 +98,7 @@ type
 
   TyToken = class abstract(TERC20)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     //------- read from contract -----------------------------------------------
     procedure Token(callback: TAsyncAddress);
     procedure GetPricePerFullShare(const block: string; callback: TAsyncQuantity);
@@ -109,7 +122,7 @@ uses
 { TyEarnCustom }
 
 class procedure TyEarnCustom.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   yToken  : TyTokenClass;
   amount  : BigInteger;
@@ -132,7 +145,7 @@ begin
 end;
 
 class procedure TyEarnCustom.BalanceOf(
-  client  : TWeb3;
+  client  : IWeb3;
   yToken  : TyTokenClass;
   owner   : TAddress;
   callback: TAsyncQuantity);
@@ -148,7 +161,7 @@ begin
 end;
 
 class procedure TyEarnCustom.TokenToUnderlying(
-  client  : TWeb3;
+  client  : IWeb3;
   yToken  : TyTokenClass;
   amount  : BigInteger;
   callback: TAsyncQuantity);
@@ -164,7 +177,7 @@ begin
 end;
 
 class procedure TyEarnCustom.UnderlyingToToken(
-  client  : TWeb3;
+  client  : IWeb3;
   yToken  : TyTokenClass;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
@@ -180,7 +193,7 @@ begin
 end;
 
 class procedure TyEarnCustom._APY(
-  client  : TWeb3;
+  client  : IWeb3;
   yToken  : TyTokenClass;
   period  : TPeriod;
   callback: TAsyncFloat);
@@ -190,7 +203,7 @@ begin
   token := yToken.Create(client);
   if Assigned(token) then
   begin
-    token.APY(period, procedure(apy: Extended; err: IError)
+    token.APY(period, procedure(apy: Double; err: IError)
     begin
       try
         callback(apy, err);
@@ -202,7 +215,7 @@ begin
 end;
 
 class procedure TyEarnCustom._Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   yToken  : TyTokenClass;
   amount  : BigInteger;
@@ -227,7 +240,7 @@ begin
 end;
 
 class procedure TyEarnCustom._Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   yToken  : TyTokenClass;
   callback: TAsyncQuantity);
@@ -257,7 +270,7 @@ begin
 end;
 
 class procedure TyEarnCustom._Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   yToken  : TyTokenClass;
   callback: TAsyncReceiptEx);
@@ -302,7 +315,7 @@ begin
 end;
 
 class procedure TyEarnCustom._WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   yToken  : TyTokenClass;
   amount  : BigInteger;
@@ -336,7 +349,7 @@ end;
 
 { TyToken }
 
-constructor TyToken.Create(aClient: TWeb3);
+constructor TyToken.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, Self.DeployedAt);
 end;
@@ -347,7 +360,7 @@ begin
   web3.eth.call(Client, Contract, 'token()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -392,7 +405,7 @@ begin
     if Assigned(err) then
       callback(0, err)
     else
-      callback(BigInteger.Create(amount.AsExtended * (price.AsExtended / 1e18)), nil);
+      callback(BigInteger.Create(amount.AsDouble * (price.AsDouble / 1e18)), nil);
   end);
 end;
 
@@ -403,7 +416,7 @@ begin
     if Assigned(err) then
       callback(0, err)
     else
-      callback(BigInteger.Create(amount.AsExtended / (price.AsExtended / 1e18)), nil);
+      callback(BigInteger.Create(amount.AsDouble / (price.AsDouble / 1e18)), nil);
   end);
 end;
 
@@ -430,7 +443,7 @@ begin
           callback(0, err);
           EXIT;
         end;
-        callback(period.ToYear(currPrice.AsExtended / pastPrice.AsExtended - 1) * 100, nil);
+        callback(period.ToYear(currPrice.AsDouble / pastPrice.AsDouble - 1) * 100, nil);
       end);
     end);
   end);

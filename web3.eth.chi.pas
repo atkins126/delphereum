@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -29,7 +42,7 @@ uses
 type
   TGasToken = class abstract(TERC20)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     // Address on mainnet where this token is deployed
     class function DeployedAt: TAddress; virtual; abstract;
     // Estimate the number of gas units needed for Mint
@@ -59,7 +72,7 @@ implementation
 
 { TGasToken }
 
-constructor TGasToken.Create(aClient: TWeb3);
+constructor TGasToken.Create(aClient: IWeb3);
 begin
   inherited Create(aClient, Self.DeployedAt);
 end;
@@ -69,7 +82,7 @@ procedure TGasToken.Mint(from: TAddress; amount: BigInteger; callback: TAsyncQua
 begin
   estimateGas(
     Self.Client, from, Self.Contract,
-    'mint(uint256)', [web3.utils.toHex(amount)], 0, callback);
+    'mint(uint256)', [web3.utils.toHex(amount)], callback);
 end;
 
 // Mint gas tokens
@@ -77,7 +90,7 @@ procedure TGasToken.Mint(from: TPrivateKey; amount: BigInteger; callback: TAsync
 begin
   web3.eth.write(
     Self.Client, from, Self.Contract,
-    'mint(uint256)', [web3.utils.toHex(amount)], 5200000, callback);
+    'mint(uint256)', [web3.utils.toHex(amount)], callback);
 end;
 
 { TGST1 }

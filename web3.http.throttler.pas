@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -108,10 +121,8 @@ var
   _get: TProc<TGet>;
 begin
   _get := procedure(request: TGet)
-  var
-    wait: Integer;
   begin
-    web3.http.get(request.endpoint, procedure(resp: TJsonObject; elapsed: Int64; err: IError)
+    web3.http.get(request.endpoint, procedure(resp: TJsonObject; err: IError)
     begin
       request.callback(resp, err);
       Queue.Enter;
@@ -119,9 +130,7 @@ begin
         Queue.Delete(0, 1);
         if Queue.Length > 0 then
         begin
-          wait := Ceil(1000 / FReqPerSec);
-          if elapsed < wait then
-            TThread.Sleep(wait - elapsed);
+          TThread.Sleep(Ceil(1000 / FReqPerSec));
           _get(Queue.First);
         end;
       finally
@@ -169,26 +178,16 @@ var
   _post: TProc<TPost>;
 begin
   _post := procedure(request: TPost)
-  var
-    src : TStream;
-    wait: Integer;
   begin
-    src := TStringStream.Create(request.body);
-    web3.http.post(request.endpoint, src, request.headers, procedure(resp: TJsonObject; elapsed: Int64; err: IError)
+    web3.http.post(request.endpoint, request.body, request.headers, procedure(resp: TJsonObject; err: IError)
     begin
-      try
-        request.callback(resp, err);
-      finally
-        src.Free;
-      end;
+      request.callback(resp, err);
       Queue.Enter;
       try
         Queue.Delete(0, 1);
         if Queue.Length > 0 then
         begin
-          wait := Ceil(1000 / FReqPerSec);
-          if elapsed < wait then
-            TThread.Sleep(wait - elapsed);
+          TThread.Sleep(Ceil(1000 / FReqPerSec));
           _post(Queue.First);
         end;
       finally

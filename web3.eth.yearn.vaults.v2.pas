@@ -5,7 +5,20 @@
 {             Copyright(c) 2021 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -29,23 +42,23 @@ type
   TyVaultV2 = class(TLendingProtocol)
   protected
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt);
     class procedure TokenToUnderlyingAmount(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToTokenAmount(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
     class procedure UnderlyingToTokenAddress(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       callback: TAsyncAddress);
   public
@@ -54,28 +67,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       period  : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -89,7 +102,7 @@ type
 
   TyVaultRegistry = class(TCustomContract)
   public
-    class procedure Create(client: TWeb3; callback: TAsyncRegistry); reintroduce;
+    class procedure Create(client: IWeb3; callback: TAsyncRegistry); reintroduce;
     procedure LatestVault(reserve: TAddress; callback: TAsyncAddress);
   end;
 
@@ -121,7 +134,7 @@ uses
 { TyVaultV2 }
 
 class procedure TyVaultV2.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -150,7 +163,7 @@ begin
 end;
 
 class procedure TyVaultV2.TokenToUnderlyingAmount(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BigInteger;
   callback: TAsyncQuantity);
@@ -177,7 +190,7 @@ begin
 end;
 
 class procedure TyVaultV2.UnderlyingToTokenAmount(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
@@ -204,7 +217,7 @@ begin
 end;
 
 class procedure TyVaultV2.UnderlyingToTokenAddress(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   callback: TAsyncAddress);
 begin
@@ -217,7 +230,7 @@ begin
     finally
       reg.Free;
     end;
-    callback(ADDRESS_ZERO, err);
+    callback(EMPTY_ADDRESS, err);
   end);
 end;
 
@@ -228,11 +241,11 @@ end;
 
 class function TyVaultV2.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  Result := (chain = Mainnet) and (reserve in [DAI, USDC, USDT]);
+  Result := (chain = Mainnet) and (reserve in [DAI, USDC, USDT, TUSD]);
 end;
 
 class procedure TyVaultV2.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   period  : TPeriod;
   callback: TAsyncFloat);
@@ -247,11 +260,11 @@ begin
     var yVaultToken := TyVaultToken.Create(client, addr);
     if Assigned(yVaultToken) then
     begin
-      yVaultToken.APY(period, procedure(apy: Extended; err: IError)
+      yVaultToken.APY(period, procedure(apy: Double; err: IError)
       begin
         try
           if Assigned(err)
-          or (period = Low(TPeriod))
+          or (period = System.Low(TPeriod))
           or (not(IsNaN(apy) or IsInfinite(apy))) then
           begin
             callback(apy, err);
@@ -267,7 +280,7 @@ begin
 end;
 
 class procedure TyVaultV2.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -298,7 +311,7 @@ begin
 end;
 
 class procedure TyVaultV2.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -336,7 +349,7 @@ begin
 end;
 
 class procedure TyVaultV2.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -386,7 +399,7 @@ begin
 end;
 
 class procedure TyVaultV2.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -427,7 +440,7 @@ end;
 
 { TyVaultRegistry }
 
-class procedure TyVaultRegistry.Create(client: TWeb3; callback: TAsyncRegistry);
+class procedure TyVaultRegistry.Create(client: IWeb3; callback: TAsyncRegistry);
 begin
   TAddress.New(client, 'v2.registry.ychad.eth', procedure(addr: TAddress; err: IError)
   begin
@@ -443,7 +456,7 @@ begin
   web3.eth.call(Client, Contract, 'latestVault(address)', [reserve], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -470,30 +483,30 @@ begin
       if Assigned(err) then
         callback(0, err)
       else
-        callback(price.AsExtended / Power(10, decimals.AsInteger), nil);
+        callback(price.AsDouble / Power(10, decimals.AsInteger), nil);
     end);
   end);
 end;
 
 procedure TyVaultToken.TokenToUnderlying(amount: BigInteger; callback: TAsyncQuantity);
 begin
-  Self.PricePerShareEx(BLOCK_LATEST, procedure(price: Extended; err: IError)
+  Self.PricePerShareEx(BLOCK_LATEST, procedure(price: Double; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
     else
-      callback(BigInteger.Create(amount.AsExtended * price), nil);
+      callback(BigInteger.Create(amount.AsDouble * price), nil);
   end);
 end;
 
 procedure TyVaultToken.UnderlyingToToken(amount: BIgInteger; callback: TAsyncQuantity);
 begin
-  Self.PricePerShareEx(BLOCK_LATEST, procedure(price: Extended; err: IError)
+  Self.PricePerShareEx(BLOCK_LATEST, procedure(price: Double; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
     else
-      callback(BigInteger.Create(amount.AsExtended / price), nil);
+      callback(BigInteger.Create(amount.AsDouble / price), nil);
   end);
 end;
 
@@ -520,10 +533,10 @@ begin
           callback(0, err);
           EXIT;
         end;
-        if IsNaN(currPrice.AsExtended) or IsNaN(pastPrice.AsExtended) then
+        if IsNaN(currPrice.AsDouble) or IsNaN(pastPrice.AsDouble) then
           callback(NaN, nil)
         else
-          callback(period.ToYear((currPrice.AsExtended / pastPrice.AsExtended - 1) * 100), nil);
+          callback(period.ToYear((currPrice.AsDouble / pastPrice.AsDouble - 1) * 100), nil);
       end);
     end);
   end);

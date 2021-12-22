@@ -5,7 +5,20 @@
 {             Copyright(c) 2019 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -79,7 +92,7 @@ type
     function  ListenForLatestBlock: Boolean; virtual;
     procedure OnLatestBlockMined(log: TLog); virtual;
   public
-    constructor Create(aClient: TWeb3; aContract: TAddress); override;
+    constructor Create(aClient: IWeb3; aContract: TAddress); override;
     destructor  Destroy; override;
 
     //------- read from contract -----------------------------------------------
@@ -92,7 +105,7 @@ type
     procedure Allowance  (owner, spender: TAddress; callback: TAsyncQuantity);
 
     //------- helpers ----------------------------------------------------------
-    procedure Scale  (amount: Extended; callback: TAsyncQuantity);
+    procedure Scale  (amount: Double; callback: TAsyncQuantity);
     procedure Unscale(amount: BigInteger; callback: TAsyncFloat);
 
     //------- write to contract ------------------------------------------------
@@ -121,7 +134,7 @@ implementation
 
 { TERC20 }
 
-constructor TERC20.Create(aClient: TWeb3; aContract: TAddress);
+constructor TERC20.Create(aClient: IWeb3; aContract: TAddress);
 begin
   inherited Create(aClient, aContract);
   FTask := web3.eth.logs.get(aClient, aContract, OnLatestBlockMined);
@@ -227,7 +240,7 @@ begin
   web3.eth.call(Client, Contract, 'allowance(address,address)', [owner, spender], callback);
 end;
 
-procedure TERC20.Scale(amount: Extended; callback: TAsyncQuantity);
+procedure TERC20.Scale(amount: Double; callback: TAsyncQuantity);
 begin
   Self.Decimals(procedure(dec: BigInteger; err: IError)
   begin
@@ -237,7 +250,7 @@ begin
       if dec.IsZero then
         callback(BigInteger.Create(amount), nil)
       else
-        callback(BigInteger.Create(amount * Power(10, dec.AsExtended)), nil);
+        callback(BigInteger.Create(amount * Power(10, dec.AsDouble)), nil);
   end);
 end;
 
@@ -249,9 +262,9 @@ begin
       callback(0, err)
     else
       if dec.IsZero then
-        callback(amount.AsExtended, nil)
+        callback(amount.AsDouble, nil)
       else
-        callback(amount.AsExtended / Power(10, dec.AsExtended), nil);
+        callback(amount.AsDouble / Power(10, dec.AsDouble), nil);
   end);
 end;
 

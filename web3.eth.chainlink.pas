@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -30,10 +43,10 @@ type
 
   TEthUsd = class(TAggregatorV3)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
   end;
 
-procedure eth_usd(client: TWeb3; callback: TAsyncFloat);
+procedure eth_usd(client: IWeb3; callback: TAsyncFloat);
 
 implementation
 
@@ -45,7 +58,7 @@ uses
   // web3
   web3.coincap;
 
-procedure eth_usd(client: TWeb3; callback: TAsyncFloat);
+procedure eth_usd(client: IWeb3; callback: TAsyncFloat);
 var
   EthUsd: TEthUsd;
 begin
@@ -55,7 +68,7 @@ begin
     EthUsd := TEthUsd.Create(client);
     if Assigned(EthUsd) then
     begin
-      EthUsd.Price(procedure(price: Extended; err: IError)
+      EthUsd.Price(procedure(price: Double; err: IError)
       begin
         try
           callback(price, err);
@@ -108,7 +121,7 @@ end;
 
 { TEthUsd}
 
-constructor TEthUsd.Create(aClient: TWeb3);
+constructor TEthUsd.Create(aClient: IWeb3);
 begin
   case aClient.Chain of
     Mainnet:

@@ -5,7 +5,20 @@
 {             Copyright(c) 2019 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -26,7 +39,8 @@ uses
   web3.eth.contract,
   web3.eth.crypto,
   web3.eth.logs,
-  web3.eth.types;
+  web3.eth.types,
+  web3.utils;
 
 type
   // https://eips.ethereum.org/EIPS/eip-721
@@ -88,7 +102,7 @@ type
     procedure Symbol(callback: TAsyncString);
     // A distinct Uniform Resource Identifier (URI) for a given asset.
     // The URI may point to a JSON file that conforms to the "ERC721 Metadata JSON Schema".
-    procedure TokenURI(tokenId: UInt64; callback: TAsyncString);
+    procedure TokenURI(tokenId: BigInteger; callback: TAsyncString);
   end;
 
   IERC721Enumerable = interface
@@ -140,7 +154,7 @@ type
   protected
     procedure WatchOrStop; virtual;
   public
-    constructor Create(aClient: TWeb3; aContract: TAddress); override;
+    constructor Create(aClient: IWeb3; aContract: TAddress); override;
     destructor  Destroy; override;
     // IERC721
     procedure BalanceOf(
@@ -179,7 +193,7 @@ type
     // IERC721Metadata
     procedure Name(callback: TAsyncString);
     procedure Symbol(callback: TAsyncString);
-    procedure TokenURI(tokenId: UInt64; callback: TAsyncString);
+    procedure TokenURI(tokenId: BigInteger; callback: TAsyncString);
     // IERC721Enumerable
     procedure TotalSupply(callback: TAsyncQuantity);
     procedure TokenByIndex(index: UInt64; callback: TAsyncQuantity);
@@ -194,7 +208,7 @@ implementation
 
 { TERC721}
 
-constructor TERC721.Create(aClient: TWeb3; aContract: TAddress);
+constructor TERC721.Create(aClient: IWeb3; aContract: TAddress);
 begin
   inherited Create(aClient, aContract);
 
@@ -271,7 +285,7 @@ begin
   web3.eth.call(Client, Contract, 'ownerOf(uint256)', [tokenId], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -336,7 +350,7 @@ begin
   web3.eth.call(Client, Contract, 'getApproved(uint256)', [tokenId], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -372,9 +386,9 @@ begin
   end);
 end;
 
-procedure TERC721.TokenURI(tokenId: UInt64; callback: TAsyncString);
+procedure TERC721.TokenURI(tokenId: BigInteger; callback: TAsyncString);
 begin
-  web3.eth.call(Client, Contract, 'tokenURI(uint256)', [tokenId], procedure(tup: TTuple; err: IError)
+  web3.eth.call(Client, Contract, 'tokenURI(uint256)', [web3.utils.toHex(tokenId)], procedure(tup: TTuple; err: IError)
   begin
     if Assigned(err) then
       callback('', err)

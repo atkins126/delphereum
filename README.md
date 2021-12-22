@@ -22,13 +22,15 @@ Once added to the blockchain, a smart contract becomes public and cannot be modi
 
 A [dapp](https://en.wikipedia.org/wiki/Decentralized_application) is an application whose backend runs on a decentralised network with trustless protocols. Dapps aren’t owned by anyone, cannot be shut down, and have zero downtime.
 
-## What other blockchains does this thing support?
+## What other networks does this thing support?
 
-Delphereum supports [every EVM-compatible blockchain](https://chainlist.org/), including (but not limited to)
+Delphereum supports [every EVM-compatible network](https://chainlist.org/), including (but not limited to)
+* [Arbitrum](https://arbitrum.io/)
 * [Optimism](https://optimism.io/)
 * [RSK](https://www.rsk.co/)
 * [xDai](https://www.xdaichain.com/)
 * [Binance Smart Chain](https://bscscan.com/)
+* [Polygon](https://polygon.technology/)
 
 ## Dependencies
 
@@ -65,7 +67,7 @@ You can download Bankless [for Windows](https://www.microsoft.com/store/productI
 
 ## License
 
-Distributed under the [Creative Commons NonCommercial](https://github.com/svanas/delphereum/blob/master/LICENSE.md) (aka CC BY-NC) license.
+Distributed under the [GNU AGP v3.0 with Commons Clause](https://github.com/svanas/delphereum/blob/master/LICENSE) license.
 
 ## Sponsors
 
@@ -75,4 +77,4 @@ Distributed under the [Creative Commons NonCommercial](https://github.com/svanas
 
 ## Commercial support and training
 
-Commercial support and training is available from [Stefan van As](https://stackoverflow.com/story/svanas).
+Commercial support and training is available from [Stefan](https://stackoverflow.com/story/svanas).

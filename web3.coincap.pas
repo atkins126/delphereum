@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -22,8 +35,8 @@ uses
 
 type
   ITicker = interface
-    function Symbol: string;   // most common symbol used to identify this asset on an exchange
-    function Price : Extended; // volume-weighted price based on real-time market data, translated to USD
+    function Symbol: string; // most common symbol used to identify this asset on an exchange
+    function Price : Double; // volume-weighted price based on real-time market data, translated to USD
   end;
 
   TAsyncTicker = reference to procedure(ticker: ITicker; err: IError);
@@ -46,7 +59,7 @@ type
     FJsonObject: TJsonObject;
   public
     function Symbol: string;
-    function Price : Extended;
+    function Price : Double;
     constructor Create(aJsonObject: TJsonObject);
     destructor Destroy; override;
   end;
@@ -69,9 +82,9 @@ begin
   Result := getPropAsStr(FJsonObject, 'symbol');
 end;
 
-function TTicker.Price: Extended;
+function TTicker.Price: Double;
 begin
-  Result := getPropAsExt(FJsonObject, 'priceUsd');
+  Result := getPropAsDbl(FJsonObject, 'priceUsd');
 end;
 
 function ticker(const asset: string; callback: TAsyncTicker): IAsyncResult;

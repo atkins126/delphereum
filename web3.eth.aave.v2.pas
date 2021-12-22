@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -36,15 +49,15 @@ type
       reserve : TReserve;
       callback: TAsyncAddress);
     class procedure UNDERLYING_TO_TOKEN(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       callback: TAsyncAddress);
     class procedure TOKEN_TO_UNDERLYING(
-      client  : TWeb3;
+      client  : IWeb3;
       atoken  : TAddress;
       callback: TAsyncAddress);
     class procedure Approve(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -55,28 +68,28 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       _period : TPeriod;
       callback: TAsyncFloat); override;
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); override;
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); override;
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); override;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -111,7 +124,7 @@ type
 type
   TAaveLendingPoolAddressesProvider = class(TCustomContract)
   public
-    constructor Create(aClient: TWeb3); reintroduce;
+    constructor Create(aClient: IWeb3); reintroduce;
     procedure GetLendingPool(callback: TAsyncAddress);
     procedure GetAddress(id: TBytes32; callback: TAsyncAddress);
     procedure GetProtocolDataProvider(callback: TAsyncAddress);
@@ -153,7 +166,7 @@ begin
     end;
     EXIT;
   end;
-  callback(ADDRESS_ZERO,
+  callback(EMPTY_ADDRESS,
     TError.Create('%s is not supported on %s', [
       GetEnumName(TypeInfo(TReserve), Ord(reserve)), GetEnumName(TypeInfo(TChain), Ord(chain))
     ])
@@ -161,7 +174,7 @@ begin
 end;
 
 class procedure TAave.UNDERLYING_TO_TOKEN(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   callback: TAsyncAddress);
 begin
@@ -171,7 +184,7 @@ begin
     begin
       if Assigned(err) then
       begin
-        callback(ADDRESS_ZERO, err);
+        callback(EMPTY_ADDRESS, err);
         EXIT;
       end;
       var dp := TAaveProtocolDataProvider.Create(client, addr);
@@ -180,11 +193,11 @@ begin
         begin
           if Assigned(err) then
           begin
-            callback(ADDRESS_ZERO, err);
+            callback(EMPTY_ADDRESS, err);
             EXIT;
           end;
           if Length(tup) = 0 then
-            callback(ADDRESS_ZERO, nil)
+            callback(EMPTY_ADDRESS, nil)
           else
             callback(tup[0].toAddress, nil);
         end);
@@ -198,7 +211,7 @@ begin
 end;
 
 class procedure TAave.TOKEN_TO_UNDERLYING(
-  client  : TWeb3;
+  client  : IWeb3;
   atoken  : TAddress;
   callback: TAsyncAddress);
 begin
@@ -211,7 +224,7 @@ begin
 end;
 
 class procedure TAave.Approve(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -264,7 +277,7 @@ begin
 end;
 
 class procedure TAave.APY(
-  client  : TWeb3;
+  client  : IWeb3;
   reserve : TReserve;
   _period : TPeriod;
   callback: TAsyncFloat);
@@ -301,7 +314,7 @@ begin
 end;
 
 class procedure TAave.Deposit(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -340,7 +353,7 @@ begin
 end;
 
 class procedure TAave.Balance(
-  client  : TWeb3;
+  client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
   callback: TAsyncQuantity);
@@ -363,7 +376,7 @@ begin
 end;
 
 class procedure TAave.Withdraw(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   callback: TAsyncReceiptEx);
@@ -388,7 +401,7 @@ begin
 end;
 
 class procedure TAave.WithdrawEx(
-  client  : TWeb3;
+  client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
@@ -530,7 +543,7 @@ end;
 
 { TAaveLendingPoolAddressesProvider }
 
-constructor TAaveLendingPoolAddressesProvider.Create(aClient: TWeb3);
+constructor TAaveLendingPoolAddressesProvider.Create(aClient: IWeb3);
 begin
   if aClient.Chain = Mainnet then
     inherited Create(aClient, '0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5')
@@ -546,7 +559,7 @@ begin
   web3.eth.call(Client, Contract, 'getLendingPool()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -557,7 +570,7 @@ begin
   web3.eth.call(Client, Contract, 'getAddress(bytes32)', [web3.utils.toHex(id)], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);
@@ -577,7 +590,7 @@ begin
   web3.eth.call(Client, Contract, 'UNDERLYING_ASSET_ADDRESS()', [], procedure(const hex: string; err: IError)
   begin
     if Assigned(err) then
-      callback(ADDRESS_ZERO, err)
+      callback(EMPTY_ADDRESS, err)
     else
       callback(TAddress.New(hex), nil);
   end);

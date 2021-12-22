@@ -5,7 +5,20 @@
 {             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -27,7 +40,7 @@ function unmarshal(const value: string)  : TJsonValue;
 
 function getPropAsStr(obj: TJsonValue; const name: string; const def: string = ''): string;
 function getPropAsInt(obj: TJsonValue; const name: string; def: Integer = 0): Integer;
-function getPropAsExt(obj: TJsonValue; const name: string; def: Extended = 0): Extended;
+function getPropAsDbl(obj: TJsonValue; const name: string; def: Double = 0): Double;
 function getPropAsBig(obj: TJsonValue; const name: string; def: BigInteger): BigInteger;
 function getPropAsObj(obj: TJsonValue; const name: string): TJsonObject;
 function getPropAsArr(obj: TJsonValue; const name: string): TJsonArray;
@@ -108,7 +121,7 @@ begin
           Result := def;
 end;
 
-function getPropAsExt(obj: TJsonValue; const name: string; def: Extended): Extended;
+function getPropAsDbl(obj: TJsonValue; const name: string; def: Double): Double;
 var
   P : TJsonPair;
   FS: TFormatSettings;

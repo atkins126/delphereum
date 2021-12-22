@@ -5,7 +5,20 @@
 {             Copyright(c) 2019 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -46,7 +59,7 @@ type
 type
   TAsyncLog = reference to procedure(log: TLog);
 
-function get(client: TWeb3; address: TAddress; callback: TAsyncLog): ITask;
+function get(client: IWeb3; address: TAddress; callback: TAsyncLog): ITask;
 
 implementation
 
@@ -137,7 +150,7 @@ end;
 
 { private functions }
 
-function getAsArr(client: TWeb3; fromBlock: BigInteger; address: TAddress): TJsonArray;
+function getAsArr(client: IWeb3; fromBlock: BigInteger; address: TAddress): TJsonArray;
 var
   &in : TJsonObject;
   &out: TJsonObject;
@@ -152,7 +165,7 @@ begin
     ]
   )) as TJsonObject;
   try
-    &out := client.JsonRpc.Send(client.URL, client.Security, 'eth_getLogs', [&in]);
+    &out := client.Call('eth_getLogs', [&in]);
     if Assigned(&out) then
     try
       arr := web3.json.getPropAsArr(&out, 'result');
@@ -166,7 +179,7 @@ begin
   end;
 end;
 
-function getAsLog(client: TWeb3; fromBlock: BigInteger; address: TAddress): TLogs;
+function getAsLog(client: IWeb3; fromBlock: BigInteger; address: TAddress): TLogs;
 var
   arr : TJsonArray;
   itm : TJsonValue;
@@ -188,7 +201,7 @@ end;
 
 { public functions }
 
-function get(client: TWeb3; address: TAddress; callback: TAsyncLog): ITask;
+function get(client: IWeb3; address: TAddress; callback: TAsyncLog): ITask;
 begin
   Result := TTask.Create(procedure
   var

@@ -5,7 +5,20 @@
 {             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
-{   Distributed under Creative Commons NonCommercial (aka CC BY-NC) license.   }
+{             Distributed under GNU AGPL v3.0 with Commons Clause              }
+{                                                                              }
+{   This program is free software: you can redistribute it and/or modify       }
+{   it under the terms of the GNU Affero General Public License as published   }
+{   by the Free Software Foundation, either version 3 of the License, or       }
+{   (at your option) any later version.                                        }
+{                                                                              }
+{   This program is distributed in the hope that it will be useful,            }
+{   but WITHOUT ANY WARRANTY; without even the implied warranty of             }
+{   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              }
+{   GNU Affero General Public License for more details.                        }
+{                                                                              }
+{   You should have received a copy of the GNU Affero General Public License   }
+{   along with this program.  If not, see <https://www.gnu.org/licenses/>      }
 {                                                                              }
 {******************************************************************************}
 
@@ -24,25 +37,25 @@ uses
   web3.eth.types;
 
 type
-  TReserve = (DAI, USDC, USDT, mUSD);
+  TReserve = (DAI, USDC, USDT, MUSD, TUSD);
 
   TReserveHelper = record helper for TReserve
     function  Symbol  : string;
-    function  Decimals: Extended;
+    function  Decimals: Double;
     function  Address : TAddress;
-    function  Scale(amount: Extended): BigInteger;
-    function  Unscale(amount: BigInteger): Extended;
-    procedure BalanceOf(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
+    function  Scale(amount: Double): BigInteger;
+    function  Unscale(amount: BigInteger): Double;
+    procedure BalanceOf(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
   end;
 
-  TPeriod = (oneDay, threeDays, oneWeek, oneMonth);
+  TPeriod = (oneDay, threeDays, oneWeek, twoWeeks, oneMonth);
 
   TPeriodHelper = record helper for TPeriod
-    function Days   : Extended;
-    function Hours  : Extended;
+    function Days   : Double;
+    function Hours  : Double;
     function Minutes: Integer;
     function Seconds: Integer;
-    function ToYear(value: Extended): Extended;
+    function ToYear(value: Double): Double;
   end;
 
   TLendingProtocol = class abstract
@@ -53,31 +66,31 @@ type
       reserve: TReserve): Boolean; virtual; abstract;
     // Returns the annual yield as a percentage with 4 decimals.
     class procedure APY(
-      client  : TWeb3;
+      client  : IWeb3;
       reserve : TReserve;
       period  : TPeriod;
       callback: TAsyncFloat); virtual; abstract;
     // Deposits an underlying asset into the lending pool.
     class procedure Deposit(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt); virtual; abstract;
     // Returns how much underlying assets you are entitled to.
     class procedure Balance(
-      client  : TWeb3;
+      client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
       callback: TAsyncQuantity); virtual; abstract;
     // Withdraws your underlying asset from the lending pool.
     class procedure Withdraw(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       callback: TAsyncReceiptEx); virtual; abstract;
     class procedure WithdrawEx(
-      client  : TWeb3;
+      client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
@@ -95,17 +108,18 @@ uses
 
 { TPeriodHelper }
 
-function TPeriodHelper.Days: Extended;
+function TPeriodHelper.Days: Double;
 begin
   Result := 1;
   case Self of
     threeDays: Result := 3;
     oneWeek  : Result := 7;
+    twoWeeks : Result := 14;
     oneMonth : Result := 365.25 / 12;
   end;
 end;
 
-function TPeriodHelper.Hours: Extended;
+function TPeriodHelper.Hours: Double;
 begin
   Result := Self.Days * 24;
 end;
@@ -120,7 +134,7 @@ begin
   Result := Self.Minutes * 60;
 end;
 
-function TPeriodHelper.ToYear(value: Extended): Extended;
+function TPeriodHelper.ToYear(value: Double): Double;
 begin
   Result := value * (365.25 / Self.Days);
 end;
@@ -132,13 +146,14 @@ begin
   Result := GetEnumName(TypeInfo(TReserve), Ord(Self));
 end;
 
-function TReserveHelper.Decimals: Extended;
+function TReserveHelper.Decimals: Double;
 begin
   case Self of
     DAI : Result := 1e18;
     USDC: Result := 1e6;
     USDT: Result := 1e6;
-    mUSD: Result := 1e18
+    MUSD: Result := 1e18;
+    TUSD: Result := 1e18;
   else
     raise EWeb3.CreateFmt('%s not implemented', [Self.Symbol]);
   end;
@@ -150,23 +165,24 @@ begin
     DAI : Result := '0x6b175474e89094c44da98b954eedeac495271d0f';
     USDC: Result := '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
     USDT: Result := '0xdac17f958d2ee523a2206206994597c13d831ec7';
-    mUSD: Result := '0xe2f2a5C287993345a840Db3B0845fbC70f5935a5';
+    MUSD: Result := '0xe2f2a5C287993345a840Db3B0845fbC70f5935a5';
+    TUSD: Result := '0x0000000000085d4780B73119b644AE5ecd22b376';
   else
     raise EWeb3.CreateFmt('%s not implemented', [Self.Symbol]);
   end;
 end;
 
-function TReserveHelper.Scale(amount: Extended): BigInteger;
+function TReserveHelper.Scale(amount: Double): BigInteger;
 begin
   Result := BigInteger.Create(amount * Self.Decimals);
 end;
 
-function TReserveHelper.Unscale(amount: BigInteger): Extended;
+function TReserveHelper.Unscale(amount: BigInteger): Double;
 begin
-  Result := amount.AsExtended / Self.Decimals;
+  Result := amount.AsDouble / Self.Decimals;
 end;
 
-procedure TReserveHelper.BalanceOf(client: TWeb3; owner: TAddress; callback: TAsyncQuantity);
+procedure TReserveHelper.BalanceOf(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
 var
   erc20: TERC20;
 begin
