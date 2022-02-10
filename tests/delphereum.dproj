@@ -125,11 +125,9 @@
         <DCCReference Include="..\web3.eth.abi.pas"/>
         <DCCReference Include="..\web3.eth.abi.tests.pas"/>
         <DCCReference Include="..\web3.eth.alchemy.pas"/>
-        <DCCReference Include="..\web3.eth.binance.pas"/>
         <DCCReference Include="..\web3.eth.blocknative.mempool.pas"/>
         <DCCReference Include="..\web3.eth.blocknative.mempool.sgc.pas"/>
         <DCCReference Include="..\web3.eth.chainlink.pas"/>
-        <DCCReference Include="..\web3.eth.chi.pas"/>
         <DCCReference Include="..\web3.eth.compound.pas"/>
         <DCCReference Include="..\web3.eth.contract.pas"/>
         <DCCReference Include="..\web3.eth.crypto.pas"/>
@@ -153,6 +151,7 @@
         <DCCReference Include="..\web3.eth.pubsub.pas"/>
         <DCCReference Include="..\web3.eth.rari.capital.api.pas"/>
         <DCCReference Include="..\web3.eth.rari.capital.v2.pas"/>
+        <DCCReference Include="..\web3.eth.tokenlists.pas"/>
         <DCCReference Include="..\web3.eth.tx.pas"/>
         <DCCReference Include="..\web3.eth.tx.tests.pas"/>
         <DCCReference Include="..\web3.eth.types.pas"/>
@@ -160,6 +159,7 @@
         <DCCReference Include="..\web3.eth.utils.pas"/>
         <DCCReference Include="..\web3.eth.utils.tests.pas"/>
         <DCCReference Include="..\web3.eth.yearn.finance.pas"/>
+        <DCCReference Include="..\web3.eth.yearn.finance.api.pas"/>
         <DCCReference Include="..\web3.eth.yearn.finance.v2.pas"/>
         <DCCReference Include="..\web3.eth.yearn.finance.v3.pas"/>
         <DCCReference Include="..\web3.eth.yearn.vaults.v1.pas"/>

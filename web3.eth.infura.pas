@@ -43,9 +43,7 @@ implementation
 uses
   // Delphi
   System.SysUtils,
-  System.TypInfo,
-  // web3
-  web3.eth.binance;
+  System.TypInfo;
 
 function endpoint(chain: TChain; const projectId: string): string;
 begin
@@ -55,33 +53,30 @@ end;
 function endpoint(chain: TChain; protocol: TProtocol; const projectId: string): string;
 const
   ENDPOINT: array[TChain] of array[TProtocol] of string = (
-    ('https://mainnet.infura.io/v3/%s', 'wss://mainnet.infura.io/ws/v3/%s'), // Mainnet
-    ('https://ropsten.infura.io/v3/%s', 'wss://ropsten.infura.io/ws/v3/%s'), // Ropsten
-    ('https://rinkeby.infura.io/v3/%s', 'wss://rinkeby.infura.io/ws/v3/%s'), // Rinkeby
-    ('https://kovan.infura.io/v3/%s',   'wss://kovan.infura.io/ws/v3/%s'),   // Kovan
-    ('https://goerli.infura.io/v3/%s',  'wss://goerli.infura.io/ws/v3/%s'),  // Goerli
-    ('https://optimism-mainnet.infura.io/v3/%s', ''), // Optimism
-    ('https://optimism-kovan.infura.io/v3/%s',   ''), // Optimism_test_net
-    ('', ''),                                         // RSK
-    ('', ''),                                         // RSK_test_net
-    ('', ''),                                         // BSC
-    ('', ''),                                         // BSC_test_net
-    ('', ''),                                         // xDai
-    ('https://polygon-mainnet.infura.io/v3/%s',  ''), // Polygon
-    ('https://polygon-mumbai.infura.io/v3/%s',   ''), // Polygon_test_net
-    ('https://arbitrum-mainnet.infura.io/v3/%s', ''), // Arbitrum
-    ('https://arbitrum-rinkeby.infura.io/v3/%s', '')  // Arbitrum_test_net
+    { Ethereum          } ('https://mainnet.infura.io/v3/%s', 'wss://mainnet.infura.io/ws/v3/%s'),
+    { Ropsten           } ('https://ropsten.infura.io/v3/%s', 'wss://ropsten.infura.io/ws/v3/%s'),
+    { Rinkeby           } ('https://rinkeby.infura.io/v3/%s', 'wss://rinkeby.infura.io/ws/v3/%s'),
+    { Kovan             } ('https://kovan.infura.io/v3/%s', 'wss://kovan.infura.io/ws/v3/%s'),
+    { Goerli            } ('https://goerli.infura.io/v3/%s', 'wss://goerli.infura.io/ws/v3/%s'),
+    { Optimism          } ('https://optimism-mainnet.infura.io/v3/%s', ''),
+    { Optimism_test_net } ('https://optimism-kovan.infura.io/v3/%s', ''),
+    { RSK               } ('https://public-node.rsk.co', ''),
+    { RSK_test_net      } ('https://public-node.testnet.rsk.co', ''),
+    { BSC               } ('https://bsc-dataseed.binance.org', ''),
+    { BSC_test_net      } ('https://data-seed-prebsc-1-s1.binance.org:8545', ''),
+    { Gnosis            } ('https://rpc.gnosischain.com', 'wss://rpc.gnosischain.com/wss'),
+    { Polygon           } ('https://polygon-mainnet.infura.io/v3/%s', ''),
+    { Polygon_test_net  } ('https://polygon-mumbai.infura.io/v3/%s', ''),
+    { Fantom            } ('https://rpc.ftm.tools', ''),
+    { Fantom_test_net   } ('https://rpc.testnet.fantom.network', ''),
+    { Arbitrum          } ('https://arbitrum-mainnet.infura.io/v3/%s', ''),
+    { Arbitrum_test_net } ('https://arbitrum-rinkeby.infura.io/v3/%s', '')
   );
 begin
   Result := ENDPOINT[chain][protocol];
   if Result <> '' then
   begin
     Result := Format(Result, [projectId]);
-    EXIT;
-  end;
-  if chain in [BSC, BSC_test_net] then
-  begin
-    Result := web3.eth.binance.endpoint(chain);
     EXIT;
   end;
   raise EInfura.CreateFmt('%s not supported', [GetEnumName(TypeInfo(TChain), Ord(chain))]);

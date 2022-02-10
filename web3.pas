@@ -37,7 +37,7 @@ uses
 
 type
   TChain = (
-    Mainnet,
+    Ethereum,
     Ropsten,
     Rinkeby,
     Kovan,
@@ -48,9 +48,11 @@ type
     RSK_test_net,
     BSC,
     BSC_test_net,
-    xDai,
+    Gnosis,
     Polygon,
     Polygon_test_net,
+    Fantom,
+    Fantom_test_net,
     Arbitrum,
     Arbitrum_test_net
   );
@@ -59,7 +61,6 @@ type
     function Id: Integer;
     function Name: string;
     function TxType: Byte;
-    function Ethereum: Boolean;
     function BlockExplorerURL: string;
   end;
 
@@ -87,6 +88,12 @@ type
     constructor Create(const Msg: string; const Args: array of const); overload;
     function Message: string; virtual;
   end;
+
+  // You can safely ignore this error and continue execution if you want
+  ISilent = interface(IError)
+  ['{07D302E5-B5F2-479C-8606-574D2F8BCF4F}']
+  end;
+  TSilent = class(TError, ISilent);
 
   TOnEtherscanApiKey = reference to procedure(var apiKey: string);
 
@@ -287,9 +294,11 @@ const
     31,    // RSK_test_net
     56,    // BSC
     97,    // BSC_test_net
-    100,   // xDai
+    100,   // Gnosis
     137,   // Polygon,
     80001, // Polygon_test_net
+    250,   // Fantom
+    4002,  // Fantom_test_net
     42161, // Arbitrum
     421611 // Arbitrum_test_net
   );
@@ -319,19 +328,16 @@ const
     0, // RSK_test_net
     0, // BSC
     0, // BSC_test_net
-    2, // xDai
-    0, // Polygon
-    0, // Polygon_test_net
+    2, // Gnosis
+    2, // Polygon
+    2, // Polygon_test_net
+    0, // Fantom
+    0, // Fantom_test_net
     0, // Arbitrum
     0  // Arbitrum_test_net
   );
 begin
   Result := TX_TYPE[Self];
-end;
-
-function TChainHelper.Ethereum: Boolean;
-begin
-  Result := Self in [Mainnet, Ropsten, Rinkeby, Kovan, Goerli];
 end;
 
 function TChainHelper.BlockExplorerURL: string;
@@ -348,9 +354,11 @@ const
     'https://explorer.testnet.rsk.co',       // RSK_test_net
     'https://bscscan.com',                   // BSC
     'https://testnet.bscscan.com',           // BSC_test_net
-    'https://blockscout.com/xdai/mainnet/',  // xDai
+    'https://blockscout.com/xdai/mainnet/',  // Gnosis
     'https://polygonscan.com',               // Polygon
     'https://mumbai.polygonscan.com',        // Polygon_test_net
+    'https://ftmscan.com',                   // Fantom
+    'https://testnet.ftmscan.com',           // Fantom_test_net
     'https://explorer.arbitrum.io',          // Arbitrum
     'https://rinkeby-explorer.arbitrum.io'   // Arbitrum_test_net
   );
@@ -455,7 +463,7 @@ begin
         callback(False, err);
         EXIT;
       end;
-      web3.eth.chainlink.eth_usd(client, procedure(price: Double; err: IError)
+      web3.eth.chainlink.ETH_USD(client, procedure(price: Double; err: IError)
       begin
         if Assigned(err) then
         begin
@@ -471,7 +479,7 @@ begin
               chainName,                                                  // Network
               from,                                                       // From
               &to,                                                        // To
-              fromWei(gasPrice, gwei, 1),                                 // Gas price (gwei)
+              fromWei(gasPrice, gwei, 2),                                 // Gas price (gwei)
               estimatedGas.ToString,                                      // Estimated gas (units)
               EthToFloat(fromWei(estimatedGas * gasPrice, ether)) * price // Gas fee
             ]),
@@ -489,7 +497,7 @@ end;
 
 constructor TWeb3.Create(const aURL: string);
 begin
-  Self.Create(Mainnet, aURL);
+  Self.Create(Ethereum, aURL);
 end;
 
 constructor TWeb3.Create(aChain: TChain; const aURL: string);
@@ -521,7 +529,7 @@ constructor TWeb3Ex.Create(
   aProtocol : IPubSub;
   aSecurity : TSecurity = TSecurity.Automatic);
 begin
-  Self.Create(Mainnet, aURL, aProtocol, aSecurity);
+  Self.Create(Ethereum, aURL, aProtocol, aSecurity);
 end;
 
 constructor TWeb3Ex.Create(

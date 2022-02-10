@@ -27,14 +27,14 @@ A [dapp](https://en.wikipedia.org/wiki/Decentralized_application) is an applicat
 Delphereum supports [every EVM-compatible network](https://chainlist.org/), including (but not limited to)
 * [Arbitrum](https://arbitrum.io/)
 * [Optimism](https://optimism.io/)
-* [RSK](https://www.rsk.co/)
-* [xDai](https://www.xdaichain.com/)
-* [Binance Smart Chain](https://bscscan.com/)
 * [Polygon](https://polygon.technology/)
+* [Gnosis/xDai](https://www.xdaichain.com/)
+* [Binance Smart Chain](https://bscscan.com/)
+* [Fantom](https://fantom.foundation/)
 
 ## Dependencies
 
-Before you can compile this project, you will need to clone the following repositories, and then add them to your Delphi Library path:
+Before you can compile this project, you will need to clone the following repositories, and then add them to your Delphi search path:
 ```
 git clone https://github.com/rvelthuis/DelphiBigNumbers
 git clone https://github.com/Xor-el/SimpleBaseLib4Pascal
@@ -42,6 +42,25 @@ git clone https://github.com/Xor-el/HashLib4Pascal
 git clone https://github.com/Xor-el/CryptoLib4Pascal
 ```
 Please note there are NO runtime dependencies. Delphereum is lightweight and self-contained.
+
+## Search path
+
+Assuming your project is named `MyProject` and you have a projects directory with this structure...
+
+```
+MyProject 
+CryptoLib4Pascal
+delphereum
+DelphiBigNumbers
+HashLib4Pascal
+SimpleBaseLib4Pascal
+```
+
+...then this is your Delphi search path:
+
+```
+../delphereum;../DelphiBigNumbers/Source;../CryptoLib4Pascal/CryptoLib/src/Interfaces;../CryptoLib4Pascal/CryptoLib/src/Math;../CryptoLib4Pascal/CryptoLib/src/Utils;../CryptoLib4Pascal/CryptoLib/src/Security;../HashLib4Pascal/HashLib/src/Interfaces;../HashLib4Pascal/HashLib/src/Utils;../CryptoLib4Pascal/CryptoLib/src/Utils/Randoms;../HashLib4Pascal/HashLib/src/Base;../HashLib4Pascal/HashLib/src/KDF;../HashLib4Pascal/HashLib/src/Nullable;../HashLib4Pascal/HashLib/src/NullDigest;../HashLib4Pascal/HashLib/src/Checksum;../HashLib4Pascal/HashLib/src/Hash32;../HashLib4Pascal/HashLib/src/Hash64;../HashLib4Pascal/HashLib/src/Hash128;../HashLib4Pascal/HashLib/src/Crypto;../HashLib4Pascal/HashLib/src/Interfaces/IBlake2BParams;../HashLib4Pascal/HashLib/src/Crypto/Blake2BParams;../HashLib4Pascal/HashLib/src/Interfaces/IBlake2SParams;../HashLib4Pascal/HashLib/src/Crypto/Blake2SParams;../CryptoLib4Pascal/CryptoLib/src/Crypto/Digests;../CryptoLib4Pascal/CryptoLib/src/Asn1/Pkcs;../CryptoLib4Pascal/CryptoLib/src/Asn1;../CryptoLib4Pascal/CryptoLib/src/Utils/Encoders;../SimpleBaseLib4Pascal/SimpleBaseLib/src/Bases;../SimpleBaseLib4Pascal/SimpleBaseLib/src/Utils;../SimpleBaseLib4Pascal/SimpleBaseLib/src/Interfaces;../CryptoLib4Pascal/CryptoLib/src/Asn1/RossStandart;../CryptoLib4Pascal/CryptoLib/src/Asn1/Oiw;../CryptoLib4Pascal/CryptoLib/src/Asn1/Nist;../CryptoLib4Pascal/CryptoLib/src/Asn1/Misc;../CryptoLib4Pascal/CryptoLib/src/Asn1/TeleTrust;../CryptoLib4Pascal/CryptoLib/src/Asn1/CryptoPro;../CryptoLib4Pascal/CryptoLib/src/Crypto/Prng;../CryptoLib4Pascal/CryptoLib/src/Utils/Rng;../CryptoLib4Pascal/CryptoLib/src/Crypto/Engines;../CryptoLib4Pascal/CryptoLib/src/Crypto/Parameters;../CryptoLib4Pascal/CryptoLib/src/Crypto;../CryptoLib4Pascal/CryptoLib/src/Math/EC;../CryptoLib4Pascal/CryptoLib/src/Crypto/EC;../CryptoLib4Pascal/CryptoLib/src/Math/EC/Endo;../CryptoLib4Pascal/CryptoLib/src/Asn1/Sec;../CryptoLib4Pascal/CryptoLib/src/Asn1/X9;../CryptoLib4Pascal/CryptoLib/src/Asn1/CryptLib;../CryptoLib4Pascal/CryptoLib/src/Math/Raw;../CryptoLib4Pascal/CryptoLib/src/Math/EC/Multiplier;../CryptoLib4Pascal/CryptoLib/src/Math/EC/Abc;../CryptoLib4Pascal/CryptoLib/src/Math/Field;../CryptoLib4Pascal/CryptoLib/src/Math/EC/Custom/Sec;../CryptoLib4Pascal/CryptoLib/src/Math/EC/Custom/Djb;../CryptoLib4Pascal/CryptoLib/src/Crypto/Signers;../CryptoLib4Pascal/CryptoLib/src/Crypto/Generators;../CryptoLib4Pascal/CryptoLib/src/Crypto/Macs
+```
 
 ## Tutorials
 
@@ -59,11 +78,25 @@ Please note there are NO runtime dependencies. Delphereum is lightweight and sel
 
 ## Case study
 
+### 1. Migratooor
+
+[Migratooor](https://github.com/svanas/migratooor) transfers all your tokens from one wallet to another. You can download Migratooor [for macOS and Windows](https://github.com/svanas/migratooor/releases/latest).
+
+### 2. Bankless
+
 Bankless is a DeFi desktop app with the highest possible yield on your stablecoin savings.
 
 Made with Delphi, Bankless is a small and simple dapp that makes it super easy to transfer your savings from one lending protocol to another with the click of one button.
 
 You can download Bankless [for Windows](https://www.microsoft.com/store/productId/9P50F616XCDJ) or [for macOS](https://apps.apple.com/us/app/id1521153171).
+
+### 3. PubSub
+
+[PubSub](https://github.com/svanas/PubSub) is a simple "Hello World" example project, demonstrating how to subscribe to an Ethereum gateway and get notified every time a new block got mined.
+
+### 4. NFT
+
+[NFT](https://github.com/svanas/NFT) is a simple "Hello World" example project, demonstrating how to enumerate over the NFTs in a token contract and display the associated image for each and every one of them.
 
 ## License
 

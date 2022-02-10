@@ -39,7 +39,7 @@ type
     function Price : Double; // volume-weighted price based on real-time market data, translated to USD
   end;
 
-  TAsyncTicker = reference to procedure(ticker: ITicker; err: IError);
+  TAsyncTicker = reference to procedure(const ticker: ITicker; err: IError);
 
 function ticker(const asset: string; callback: TAsyncTicker): IAsyncResult; overload;
 function ticker(const asset: string; callback: TAsyncJsonObject): IAsyncResult; overload;
@@ -54,57 +54,38 @@ uses
   web3.json;
 
 type
-  TTicker = class(TInterfacedObject, ITicker)
-  private
-    FJsonObject: TJsonObject;
+  TTicker = class(TDeserialized<TJsonObject>, ITicker)
   public
     function Symbol: string;
     function Price : Double;
-    constructor Create(aJsonObject: TJsonObject);
-    destructor Destroy; override;
   end;
-
-constructor TTicker.Create(aJsonObject: TJsonObject);
-begin
-  inherited Create;
-  FJsonObject := aJsonObject;
-end;
-
-destructor TTicker.Destroy;
-begin
-  if Assigned(FJsonObject) then
-    FJsonObject.Free;
-  inherited Destroy;
-end;
 
 function TTicker.Symbol: string;
 begin
-  Result := getPropAsStr(FJsonObject, 'symbol');
+  Result := getPropAsStr(FJsonValue, 'symbol');
 end;
 
 function TTicker.Price: Double;
 begin
-  Result := getPropAsDbl(FJsonObject, 'priceUsd');
+  Result := getPropAsDouble(FJsonValue, 'priceUsd');
 end;
 
 function ticker(const asset: string; callback: TAsyncTicker): IAsyncResult;
 begin
   Result := ticker(asset, procedure(obj: TJsonObject; err: IError)
-  var
-    data: TJsonObject;
   begin
     if Assigned(err) then
     begin
       callback(nil, err);
       EXIT;
     end;
-    data := getPropAsObj(obj, 'data');
+    var data := getPropAsObj(obj, 'data');
     if not Assigned(data) then
     begin
       callback(nil, TError.Create('%s.data is null', [asset]));
       EXIT;
     end;
-    callback(TTicker.Create(data.Clone as TJsonObject), nil);
+    callback(TTicker.Create(data), nil);
   end);
 end;
 

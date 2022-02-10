@@ -47,17 +47,17 @@ type
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncReceipt);
-    class procedure TokenToUnderlyingAmount(
+    class procedure LpTokenToUnderlyingAmount(
       client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
-    class procedure UnderlyingToTokenAmount(
+    class procedure UnderlyingToLpTokenAmount(
       client  : IWeb3;
       reserve : TReserve;
       amount  : BigInteger;
       callback: TAsyncQuantity);
-    class procedure UnderlyingToTokenAddress(
+    class procedure UnderlyingToLpTokenAddress(
       client  : IWeb3;
       reserve : TReserve;
       callback: TAsyncAddress);
@@ -129,6 +129,7 @@ uses
   // web3
   web3.eth,
   web3.eth.etherscan,
+  web3.eth.yearn.finance.api,
   web3.utils;
 
 { TyVaultV2 }
@@ -140,42 +141,50 @@ class procedure TyVaultV2.Approve(
   amount  : BigInteger;
   callback: TAsyncReceipt);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(token: TAddress; err: IError)
+  Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(nil, err);
       EXIT;
     end;
-    var underlying := TERC20.Create(client, reserve.Address);
-    if Assigned(underlying) then
+    reserve.Address(client.Chain, procedure(reserveAddr: TAddress; err: IError)
     begin
-      underlying.ApproveEx(from, token, amount, procedure(rcpt: ITxReceipt; err: IError)
+      if Assigned(err) then
       begin
-        try
-          callback(rcpt, err);
-        finally
-          underlying.Free;
-        end;
-      end);
-    end;
+        callback(nil, err);
+        EXIT;
+      end;
+      var underlying := TERC20.Create(client, reserveAddr);
+      if Assigned(underlying) then
+      begin
+        underlying.ApproveEx(from, lpTokenAddr, amount, procedure(rcpt: ITxReceipt; err: IError)
+        begin
+          try
+            callback(rcpt, err);
+          finally
+            underlying.Free;
+          end;
+        end);
+      end;
+    end);
   end);
 end;
 
-class procedure TyVaultV2.TokenToUnderlyingAmount(
+class procedure TyVaultV2.LpTokenToUnderlyingAmount(
   client  : IWeb3;
   reserve : TReserve;
   amount  : BigInteger;
   callback: TAsyncQuantity);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+  Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(0, err);
       EXIT;
     end;
-    var yVaultToken := TyVaultToken.Create(client, addr);
+    var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
     begin
       yVaultToken.TokenToUnderlying(amount, procedure(result: BigInteger; err: IError)
       begin
@@ -189,20 +198,20 @@ begin
   end);
 end;
 
-class procedure TyVaultV2.UnderlyingToTokenAmount(
+class procedure TyVaultV2.UnderlyingToLpTokenAmount(
   client  : IWeb3;
   reserve : TReserve;
   amount  : BIgInteger;
   callback: TAsyncQuantity);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+  Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(0, err);
       EXIT;
     end;
-    var yVaultToken := TyVaultToken.Create(client, addr);
+    var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
     begin
       yVaultToken.UnderlyingToToken(amount, procedure(result: BigInteger; err: IError)
       begin
@@ -216,21 +225,44 @@ begin
   end);
 end;
 
-class procedure TyVaultV2.UnderlyingToTokenAddress(
+class procedure TyVaultV2.UnderlyingToLpTokenAddress(
   client  : IWeb3;
   reserve : TReserve;
   callback: TAsyncAddress);
 begin
-  TyVaultRegistry.Create(client, procedure(reg: TyVaultRegistry; err: IError)
+  reserve.Address(client.Chain, procedure(reserveAddr: TAddress; err: IError)
   begin
-    if Assigned(reg) then
-    try
-      reg.LatestVault(reserve.Address, callback);
+    if Assigned(err) then
+    begin
+      callback(EMPTY_ADDRESS, err);
       EXIT;
-    finally
-      reg.Free;
     end;
-    callback(EMPTY_ADDRESS, err);
+    // step #1: use the yearn API
+    web3.eth.yearn.finance.api.latest(client.Chain, reserveAddr, v2, procedure(const vault: IYearnVault; err: IError)
+    begin
+      if Assigned(err) then
+      begin
+        callback(EMPTY_ADDRESS, err);
+        EXIT;
+      end;
+      if Assigned(vault) then
+      begin
+        callback(vault.Address, err);
+        EXIT;
+      end;
+      // step #2; if the yearn API didn't work, use the on-chain registry
+      TyVaultRegistry.Create(client, procedure(reg: TyVaultRegistry; err: IError)
+      begin
+        if Assigned(reg) then
+        try
+          reg.LatestVault(reserveAddr, callback);
+          EXIT;
+        finally
+          reg.Free;
+        end;
+        callback(EMPTY_ADDRESS, err);
+      end);
+    end);
   end);
 end;
 
@@ -241,7 +273,10 @@ end;
 
 class function TyVaultV2.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  Result := (chain = Mainnet) and (reserve in [DAI, USDC, USDT, TUSD]);
+  Result :=
+    (chain = Fantom) and (reserve in [DAI, USDC, USDT])
+  or
+    (chain = Ethereum) and (reserve in [DAI, USDC, USDT, TUSD]);
 end;
 
 class procedure TyVaultV2.APY(
@@ -250,32 +285,55 @@ class procedure TyVaultV2.APY(
   period  : TPeriod;
   callback: TAsyncFloat);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+  reserve.Address(client.Chain, procedure(reserveAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(0, err);
       EXIT;
     end;
-    var yVaultToken := TyVaultToken.Create(client, addr);
-    if Assigned(yVaultToken) then
+    // step #1: use the yearn API
+    web3.eth.yearn.finance.api.latest(client.Chain, reserveAddr, v2, procedure(const vault: IYearnVault; err: IError)
     begin
-      yVaultToken.APY(period, procedure(apy: Double; err: IError)
+      if Assigned(err) then
       begin
-        try
-          if Assigned(err)
-          or (period = System.Low(TPeriod))
-          or (not(IsNaN(apy) or IsInfinite(apy))) then
+        callback(0, err);
+        EXIT;
+      end;
+      if Assigned(vault) then
+      begin
+        callback(vault.APY, err);
+        EXIT;
+      end;
+      // step #2; if the yearn API didn't work, use the on-chain smart contract
+      Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
+      begin
+        if Assigned(err) then
+        begin
+          callback(0, err);
+          EXIT;
+        end;
+        var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
+        if Assigned(yVaultToken) then
+        begin
+          yVaultToken.APY(period, procedure(apy: Double; err: IError)
           begin
-            callback(apy, err);
-            EXIT;
-          end;
-          Self.APY(client, reserve, Pred(period), callback);
-        finally
-          yVaultToken.Free;
+            try
+              if Assigned(err)
+              or (period = System.Low(TPeriod))
+              or (not(IsNaN(apy) or IsInfinite(apy))) then
+              begin
+                callback(apy, err);
+                EXIT;
+              end;
+              Self.APY(client, reserve, Pred(period), callback);
+            finally
+              yVaultToken.Free;
+            end;
+          end);
         end;
       end);
-    end;
+    end);
   end);
 end;
 
@@ -293,14 +351,14 @@ begin
       callback(nil, err);
       EXIT;
     end;
-    Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+    Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
     begin
       if Assigned(err) then
       begin
         callback(nil, err);
         EXIT;
       end;
-      var yVaultToken := TyVaultToken.Create(client, addr);
+      var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
       try
         yVaultToken.Deposit(from, amount, callback);
       finally
@@ -316,14 +374,14 @@ class procedure TyVaultV2.Balance(
   reserve : TReserve;
   callback: TAsyncQuantity);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+  Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(0, err);
       EXIT;
     end;
-    var yVaultToken := TyVaultToken.Create(client, addr);
+    var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
     try
       // step #1: get the yVaultToken balance
       yVaultToken.BalanceOf(owner, procedure(balance: BigInteger; err: IError)
@@ -334,7 +392,7 @@ begin
           EXIT;
         end;
         // step #2: multiply it by the current yVaultToken price
-        Self.TokenToUnderlyingAmount(client, reserve, balance, procedure(output: BigInteger; err: IError)
+        Self.LpTokenToUnderlyingAmount(client, reserve, balance, procedure(output: BigInteger; err: IError)
         begin
           if Assigned(err) then
             callback(0, err)
@@ -354,14 +412,14 @@ class procedure TyVaultV2.Withdraw(
   reserve : TReserve;
   callback: TAsyncReceiptEx);
 begin
-  Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+  Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(nil, 0, err);
       EXIT;
     end;
-    var yVaultToken := TyVaultToken.Create(client, addr);
+    var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
     if Assigned(yVaultToken) then
     begin
       // step #1: get the yVaultToken balance
@@ -382,7 +440,7 @@ begin
               EXIT;
             end;
             // step #3: from yVaultToken-balance to Underlying-balance
-            Self.TokenToUnderlyingAmount(client, reserve, balance, procedure(output: BigInteger; err: IError)
+            Self.LpTokenToUnderlyingAmount(client, reserve, balance, procedure(output: BigInteger; err: IError)
             begin
               if Assigned(err) then
                 callback(rcpt, 0, err)
@@ -406,21 +464,21 @@ class procedure TyVaultV2.WithdrawEx(
   callback: TAsyncReceiptEx);
 begin
   // step #1: from Underlying-amount to yVaultToken-amount
-  Self.UnderlyingToTokenAmount(client, reserve, amount, procedure(input: BigInteger; err: IError)
+  Self.UnderlyingToLpTokenAmount(client, reserve, amount, procedure(input: BigInteger; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(nil, 0, err);
       EXIT;
     end;
-    Self.UnderlyingToTokenAddress(client, reserve, procedure(addr: TAddress; err: IError)
+    Self.UnderlyingToLpTokenAddress(client, reserve, procedure(lpTokenAddr: TAddress; err: IError)
     begin
       if Assigned(err) then
       begin
         callback(nil, 0, err);
         EXIT;
       end;
-      var yVaultToken := TyVaultToken.Create(client, addr);
+      var yVaultToken := TyVaultToken.Create(client, lpTokenAddr);
       if Assigned(yVaultToken) then
       try
         // step #2: withdraw yVaultToken-amount in exchange for the underlying asset.
@@ -499,7 +557,7 @@ begin
   end);
 end;
 
-procedure TyVaultToken.UnderlyingToToken(amount: BIgInteger; callback: TAsyncQuantity);
+procedure TyVaultToken.UnderlyingToToken(amount: BigInteger; callback: TAsyncQuantity);
 begin
   Self.PricePerShareEx(BLOCK_LATEST, procedure(price: Double; err: IError)
   begin

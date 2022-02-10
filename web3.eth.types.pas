@@ -117,6 +117,7 @@ type
     procedure ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean = False);
     function  Abbreviated: string;
     function  IsZero: Boolean;
+    function  SameAs(const other: TAddress): Boolean;
   end;
 
 type
@@ -260,8 +261,8 @@ begin
     end;
 
     if  (name <> '')
-    and (name <> '0x')
-    and (name <> '0x0000000000000000000000000000000000000000') then
+    and (name.ToLower <> '0x')
+    and (name.ToLower <> '0x0000000000000000000000000000000000000000') then
       output := name
     else
       output := string(addr);
@@ -283,9 +284,14 @@ end;
 function TAddressHelper.IsZero: Boolean;
 begin
   Result := (Self = '')
-         or (Self = '0x')
-         or (Self = '0x0')
-         or (Self = '0x0000000000000000000000000000000000000000');
+         or (string(Self).ToLower = '0x')
+         or (string(Self).ToLower = '0x0')
+         or (string(Self).ToLower = '0x0000000000000000000000000000000000000000');
+end;
+
+function TAddressHelper.SameAs(const other: TAddress): Boolean;
+begin
+  Result := SameText(string(self), string(other));
 end;
 
 { TPrivateKeyHelper }

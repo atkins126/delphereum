@@ -43,9 +43,7 @@ implementation
 uses
   // Delphi
   System.SysUtils,
-  System.TypInfo,
-  // web3
-  web3.eth.binance;
+  System.TypInfo;
 
 function endpoint(chain: TChain; const projectId: string): string;
 begin
@@ -55,33 +53,30 @@ end;
 function endpoint(chain: TChain; protocol: TProtocol; const projectId: string): string;
 const
   ENDPOINT: array[TChain] of array[TProtocol] of string = (
-    ('https://eth-mainnet.alchemyapi.io/v2/%s',     'wss://eth-mainnet.ws.alchemyapi.io/v2/%s'),  // Mainnet
-    ('https://eth-ropsten.alchemyapi.io/v2/%s',     'wss://eth-ropsten.ws.alchemyapi.io/v2/%s'),  // Ropsten
-    ('https://eth-rinkeby.alchemyapi.io/v2/%s',     'wss://eth-rinkeby.ws.alchemyapi.io/v2/%s'),  // Rinkeby
-    ('https://eth-kovan.alchemyapi.io/v2/%s',       'wss://eth-kovan.ws.alchemyapi.io/v2/%s'),    // Kovan
-    ('https://eth-goerli.alchemyapi.io/v2/%s',      'wss://eth-goerli.ws.alchemyapi.io/v2/%s'),   // Goerli
-    ('https://opt-mainnet.g.alchemy.com/v2/%s',     'wss://opt-mainnet.g.alchemy.com/v2/%s'),     // Optimism
-    ('https://opt-kovan.g.alchemy.com/v2/y%s',      'wss://opt-kovan.g.alchemy.com/v2/%s'),       // Optimism_test_net
-    ('', ''),                                                                                     // RSK
-    ('', ''),                                                                                     // RSK_test_net
-    ('', ''),                                                                                     // BSC
-    ('', ''),                                                                                     // BSC_test_net
-    ('', ''),                                                                                     // xDai
-    ('https://polygon-mainnet.g.alchemy.com/v2/%s', 'wss://polygon-mainnet.g.alchemy.com/v2/%s'), // Polygon                                         // Polygon
-    ('https://polygon-mumbai.g.alchemy.com/v2/%s',  'wss://polygon-mumbai.g.alchemy.com/v2/%s'),  // Polygon_test_net                                       // Polygon_test_net
-    ('https://arb-mainnet.g.alchemy.com/v2/%s',     'wss://arb-mainnet.g.alchemy.com/v2/%s'),     // Arbitrum
-    ('https://arb-rinkeby.g.alchemy.com/v2/%s',     'wss://arb-rinkeby.g.alchemy.com/v2/%s')      // Arbitrum_test_net
+    { Ethereum          } ('https://eth-mainnet.alchemyapi.io/v2/%s', 'wss://eth-mainnet.ws.alchemyapi.io/v2/%s'),
+    { Ropsten           } ('https://eth-ropsten.alchemyapi.io/v2/%s', 'wss://eth-ropsten.ws.alchemyapi.io/v2/%s'),
+    { Rinkeby           } ('https://eth-rinkeby.alchemyapi.io/v2/%s', 'wss://eth-rinkeby.ws.alchemyapi.io/v2/%s'),
+    { Kovan             } ('https://eth-kovan.alchemyapi.io/v2/%s', 'wss://eth-kovan.ws.alchemyapi.io/v2/%s'),
+    { Goerli            } ('https://eth-goerli.alchemyapi.io/v2/%s', 'wss://eth-goerli.ws.alchemyapi.io/v2/%s'),
+    { Optimism          } ('https://opt-mainnet.g.alchemy.com/v2/%s', 'wss://opt-mainnet.g.alchemy.com/v2/%s'),
+    { Optimism_test_net } ('https://opt-kovan.g.alchemy.com/v2/y%s', 'wss://opt-kovan.g.alchemy.com/v2/%s'),
+    { RSK               } ('https://public-node.rsk.co', ''),
+    { RSK_test_net      } ('https://public-node.testnet.rsk.co', ''),
+    { BSC               } ('https://bsc-dataseed.binance.org', ''),
+    { BSC_test_net      } ('https://data-seed-prebsc-1-s1.binance.org:8545', ''),
+    { Gnosis            } ('https://rpc.gnosischain.com', 'wss://rpc.gnosischain.com/wss'),
+    { Polygon           } ('https://polygon-mainnet.g.alchemy.com/v2/%s', 'wss://polygon-mainnet.g.alchemy.com/v2/%s'),
+    { Polygon_test_net  } ('https://polygon-mumbai.g.alchemy.com/v2/%s', 'wss://polygon-mumbai.g.alchemy.com/v2/%s'),
+    { Fantom            } ('https://rpc.ftm.tools', ''),
+    { Fantom_test_net   } ('https://rpc.testnet.fantom.network', ''),
+    { Arbitrum          } ('https://arb-mainnet.g.alchemy.com/v2/%s', 'wss://arb-mainnet.g.alchemy.com/v2/%s'),
+    { Arbitrum_test_net } ('https://arb-rinkeby.g.alchemy.com/v2/%s', 'wss://arb-rinkeby.g.alchemy.com/v2/%s')
   );
 begin
   Result := ENDPOINT[chain][protocol];
   if Result <> '' then
   begin
     Result := Format(Result, [projectId]);
-    EXIT;
-  end;
-  if chain in [BSC, BSC_test_net] then
-  begin
-    Result := web3.eth.binance.endpoint(chain);
     EXIT;
   end;
   raise EAlchemy.CreateFmt('%s not supported', [GetEnumName(TypeInfo(TChain), Ord(chain))]);

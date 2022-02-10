@@ -35,33 +35,88 @@ uses
   // Velthuis' BigNumbers
   Velthuis.BigIntegers;
 
-function marshal  (const obj: TJsonValue): string;
-function unmarshal(const value: string)  : TJsonValue;
+type
+  TCustomDeserialized<T: TJsonValue> = class abstract(TInterfacedObject)
+  public
+    constructor Create(const aJsonValue: T); virtual;
+  end;
+
+  TDeserialized<T: TJsonValue> = class abstract(TCustomDeserialized<T>)
+  protected
+    FJsonValue: T;
+  public
+    constructor Create(const aJsonValue: T); override;
+    destructor Destroy; override;
+  end;
+
+  IDeserializedArray<T: IInterface> = interface
+    function Count: Integer;
+    function Item(const Index: Integer): T;
+  end;
+
+  TDeserializedArray<T: IInterface> = class abstract(TDeserialized<TJsonArray>, IDeserializedArray<T>)
+  public
+    function Count: Integer;
+    function Item(const Index: Integer): T; virtual; abstract;
+  end;
+
+function marshal(const obj: TJsonValue): string;
+function unmarshal(const value: string): TJsonValue;
 
 function getPropAsStr(obj: TJsonValue; const name: string; const def: string = ''): string;
 function getPropAsInt(obj: TJsonValue; const name: string; def: Integer = 0): Integer;
-function getPropAsDbl(obj: TJsonValue; const name: string; def: Double = 0): Double;
-function getPropAsBig(obj: TJsonValue; const name: string; def: BigInteger): BigInteger;
+function getPropAsDouble(obj: TJsonValue; const name: string; def: Double = 0): Double;
+function getPropAsBigInt(obj: TJsonValue; const name: string; def: BigInteger): BigInteger;
 function getPropAsObj(obj: TJsonValue; const name: string): TJsonObject;
 function getPropAsArr(obj: TJsonValue; const name: string): TJsonArray;
+function getPropAsBOOL(obj: TJsonValue; const name: string; def: Boolean = False): Boolean;
 
 function quoteString(const S: string; Quote: Char = '"'): string;
 
 implementation
 
+{--------------------------- TCustomDeserialized<T> ---------------------------}
+
+constructor TCustomDeserialized<T>.Create(const aJsonValue: T);
+begin
+  inherited Create;
+end;
+
+{------------------------------ TDeserialized<T> ------------------------------}
+
+constructor TDeserialized<T>.Create(const aJsonValue: T);
+begin
+  inherited Create(aJsonValue);
+  FJsonValue := aJsonValue.Clone as T;
+end;
+
+destructor TDeserialized<T>.Destroy;
+begin
+  if Assigned(FJsonValue) then FJsonValue.Free;
+  inherited Destroy;
+end;
+
+{--------------------------- TDeserializedArray<T> ----------------------------}
+
+function TDeserializedArray<T>.Count: Integer;
+begin
+  Result := Self.FJsonValue.Count;
+end;
+
+{------------------------------ global functions ------------------------------}
+
 function marshal(const obj: TJsonValue): string;
-var
-  B: TBytes;
-  I: Integer;
 begin
   Result := '';
 
   if not Assigned(obj) then
     EXIT;
 
-  I := obj.EstimatedByteSize;
+  var I := obj.EstimatedByteSize;
   if I <= 0 then
     EXIT;
+
+  var B: TBytes;
   SetLength(B, I);
 
   I := obj.ToBytes(B, 0);
@@ -79,15 +134,13 @@ begin
 end;
 
 function getPropAsStr(obj: TJsonValue; const name: string; const def: string): string;
-var
-  P: TJsonPair;
 begin
   Result := def;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
     begin
@@ -101,15 +154,13 @@ begin
 end;
 
 function getPropAsInt(obj: TJsonValue; const name: string; def: Integer): Integer;
-var
-  P: TJsonPair;
 begin
   Result := def;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
       if P.JsonValue is TJsonNumber then
@@ -121,17 +172,14 @@ begin
           Result := def;
 end;
 
-function getPropAsDbl(obj: TJsonValue; const name: string; def: Double): Double;
-var
-  P : TJsonPair;
-  FS: TFormatSettings;
+function getPropAsDouble(obj: TJsonValue; const name: string; def: Double): Double;
 begin
   Result := def;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
       if P.JsonValue is TJsonNumber then
@@ -139,22 +187,20 @@ begin
       else
         if P.JsonValue is TJsonString then
         begin
-          FS := TFormatSettings.Create;
+          var FS := TFormatSettings.Create;
           FS.DecimalSeparator := '.';
           Result := StrToFloat(TJsonString(P.JsonValue).Value, FS);
         end;
 end;
 
-function getPropAsBig(obj: TJsonValue; const name: string; def: BigInteger): BigInteger;
-var
-  P: TJsonPair;
+function getPropAsBigInt(obj: TJsonValue; const name: string; def: BigInteger): BigInteger;
 begin
   Result := def;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
       if P.JsonValue is TJsonNumber then
@@ -167,15 +213,13 @@ begin
 end;
 
 function getPropAsObj(obj: TJsonValue; const name: string): TJsonObject;
-var
-  P: TJsonPair;
 begin
   Result := nil;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
       if P.JsonValue is TJsonObject then
@@ -183,28 +227,47 @@ begin
 end;
 
 function getPropAsArr(obj: TJsonValue; const name: string): TJsonArray;
-var
-  P: TJsonPair;
 begin
   Result := nil;
   if not Assigned(obj) then
     EXIT;
   if not(obj is TJsonObject) then
     EXIT;
-  P := TJsonObject(obj).Get(name);
+  var P := TJsonObject(obj).Get(name);
   if Assigned(P) then
     if Assigned(P.JsonValue) then
       if P.JsonValue is TJsonArray then
         Result := TJsonArray(P.JsonValue);
 end;
 
+function getPropAsBOOL(obj: TJsonValue; const name: string; def: Boolean): Boolean;
+begin
+  Result := def;
+  if not Assigned(obj) then
+    EXIT;
+  if not(obj is TJsonObject) then
+    EXIT;
+  var P := TJsonObject(obj).Get(name);
+  if Assigned(P) then
+    if Assigned(P.JsonValue) then
+      if P.JsonValue is TJsonTrue then
+        Result := True
+      else
+        if P.JsonValue is TJsonFalse then
+          Result := False
+        else
+          if P.JsonValue is TJsonString then
+            Result := SameText(TJsonString(P.JsonValue).Value, '1')
+                   or SameText(TJsonString(P.JsonValue).Value, 'yes')
+                   or SameText(TJsonString(P.JsonValue).Value, 'true');
+end;
+
 function quoteString(const S: string; Quote: Char): string;
-var
-  I: Integer;
 begin
   Result := S;
   if Length(Result) > 0 then
   begin
+    var I: Integer;
     // add extra backslash is there is a backslash, for example: c:\ --> c:\\
     I := Low(Result);
     while I <= Length(Result) do

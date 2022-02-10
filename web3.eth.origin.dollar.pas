@@ -122,18 +122,26 @@ class procedure TOrigin.Approve(
   amount  : BigInteger;
   callback: TAsyncReceipt);
 begin
-  var underlying := TERC20.Create(client, reserve.Address);
-  if Assigned(underlying) then
+  reserve.Address(client.Chain, procedure(reserveAddr: TAddress; err: IError)
   begin
-    underlying.ApproveEx(from, TOriginVault.DeployedAt, amount, procedure(rcpt: ITxReceipt; err: IError)
+    if Assigned(err) then
     begin
-      try
-        callback(rcpt, err);
-      finally
-        underlying.Free;
-      end;
-    end);
-  end;
+      callback(nil, err);
+      EXIT;
+    end;
+    var underlying := TERC20.Create(client, reserveAddr);
+    if Assigned(underlying) then
+    begin
+      underlying.ApproveEx(from, TOriginVault.DeployedAt, amount, procedure(rcpt: ITxReceipt; err: IError)
+      begin
+        try
+          callback(rcpt, err);
+        finally
+          underlying.Free;
+        end;
+      end);
+    end;
+  end);
 end;
 
 class function TOrigin.Name: string;
@@ -143,7 +151,7 @@ end;
 
 class function TOrigin.Supports(chain: TChain; reserve: TReserve): Boolean;
 begin
-  Result := (chain = Mainnet) and (reserve = USDC);
+  Result := (chain = Ethereum) and (reserve = USDC);
 end;
 
 class procedure TOrigin.APY(
@@ -266,18 +274,24 @@ procedure TOriginVault.Mint(
   amount  : BigInteger;
   callback: TAsyncReceipt);
 begin
-  web3.eth.write(
-    Client,
-    from,
-    Contract,
-    'mint(address,uint256,uint256)',
-    [
-      reserve.Address,
-      web3.utils.toHex(amount),
-      0
-    ],
-    callback
-  );
+  reserve.Address(Client.Chain, procedure(reserveAddr: TAddress; err: IError)
+  begin
+    if Assigned(err) then
+      callback(nil, err)
+    else
+      web3.eth.write(
+        Client,
+        from,
+        Contract,
+        'mint(address,uint256,uint256)',
+        [
+          reserveAddr,
+          web3.utils.toHex(amount),
+          0
+        ],
+        callback
+      );
+  end);
 end;
 
 procedure TOriginVault.Redeem(
