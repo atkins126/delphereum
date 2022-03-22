@@ -72,6 +72,12 @@ type
   TUnixDateTime = Int64;
   TProtocol     = (HTTPS, WebSocket);
   TSecurity     = (Automatic, TLS_10, TLS_11, TLS_12, TLS_13);
+  TStandard     = (erc20, erc721, erc1155);
+
+type
+  TStandardHelper = record helper for TStandard
+    class function New(const name: string): TStandard; static;
+  end;
 
   EWeb3 = class(Exception);
 
@@ -170,8 +176,9 @@ type
 
   IWeb3 = interface
   ['{D4C1A132-2296-40C0-B6FB-6B326EFB8A26}']
-    function Chain: TChain;
-    function URL  : string;
+    function Chain : TChain;
+    function URL   : string;
+    function TxType: Byte;
 
     function  ETHERSCAN_API_KEY: string;
     function  GetGasStationInfo: TGasStationInfo;
@@ -183,15 +190,17 @@ type
 
   TCustomWeb3 = class abstract(TInterfacedObject, IWeb3)
   private
-    FChain: TChain;
-    FURL  : string;
+    FChain : TChain;
+    FURL   : string;
+    FTxType: Byte;
 
     FOnGasStationInfo  : TOnGasStationInfo;
     FOnEtherscanApiKey : TOnEtherscanApiKey;
     FOnSignatureRequest: TOnSignatureRequest;
   public
-    function Chain: TChain;
-    function URL  : string;
+    function Chain : TChain;
+    function URL   : string;
+    function TxType: Byte;
 
     function  ETHERSCAN_API_KEY: string;
     function  GetGasStationInfo: TGasStationInfo;
@@ -210,8 +219,11 @@ type
     FProtocol: IJsonRpc;
   public
     constructor Create(const aURL: string); overload;
+    constructor Create(const aURL: string; aTxType: Byte); overload;
     constructor Create(aChain: TChain; const aURL: string); overload;
+    constructor Create(aChain: TChain; const aURL: string; aTxType: Byte); overload;
     constructor Create(aChain: TChain; const aURL: string; aProtocol: IJsonRpc); overload;
+    constructor Create(aChain: TChain; const aURL: string; aTxType: Byte; aProtocol: IJsonRpc); overload;
 
     function  Call(const method: string; args: array of const): TJsonObject; overload; override;
     procedure Call(const method: string; args: array of const; callback: TAsyncJsonObject); overload; override;
@@ -236,8 +248,19 @@ type
       aProtocol : IPubSub;
       aSecurity : TSecurity = TSecurity.Automatic); overload;
     constructor Create(
+      const aURL: string;
+      aTxType   : Byte;
+      aProtocol : IPubSub;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
       aChain    : TChain;
       const aURL: string;
+      aProtocol : IPubSub;
+      aSecurity : TSecurity = TSecurity.Automatic); overload;
+    constructor Create(
+      aChain    : TChain;
+      const aURL: string;
+      aTxType   : Byte;
       aProtocol : IPubSub;
       aSecurity : TSecurity = TSecurity.Automatic); overload;
 
@@ -283,7 +306,7 @@ function TChainHelper.Id: Integer;
 const
   // https://chainid.network/
   CHAIN_ID: array[TChain] of Integer = (
-    1,     // Mainnet
+    1,     // Ethereum
     3,     // Ropsten
     4,     // Rinkeby
     42,    // Kovan
@@ -317,7 +340,7 @@ const
   // 0 = Legacy
   // 2 = EIP-1559
   TX_TYPE: array[TChain] of Byte = (
-    2, // Mainnet
+    2, // Ethereum
     2, // Ropsten
     2, // Rinkeby
     2, // Kovan
@@ -343,7 +366,7 @@ end;
 function TChainHelper.BlockExplorerURL: string;
 const
   BLOCK_EXPLORER_URL: array[TChain] of string = (
-    'https://etherscan.io',                  // Mainnet
+    'https://etherscan.io',                  // Ethereum
     'https://ropsten.etherscan.io',          // Ropsten
     'https://rinkeby.etherscan.io',          // Rinkeby
     'https://kovan.etherscan.io',            // Kovan
@@ -364,6 +387,18 @@ const
   );
 begin
   Result := BLOCK_EXPLORER_URL[Self];
+end;
+
+{ TStandardHelper }
+
+class function TStandardHelper.New(const name: string): TStandard;
+begin
+  if SameText(name, 'ERC1155') or SameText(name, 'ERC-1155') then
+    Result := erc1155
+  else if SameText(name, 'ERC721') or SameText(name, 'ERC-721') then
+    Result := erc721
+  else
+    result := erc20;
 end;
 
 { TError }
@@ -407,6 +442,11 @@ end;
 function TCustomWeb3.URL: string;
 begin
   Result := Self.FURL;
+end;
+
+function TCustomWeb3.TxType: Byte;
+begin
+  Result := Self.FTxType;
 end;
 
 function TCustomWeb3.ETHERSCAN_API_KEY: string;
@@ -500,15 +540,31 @@ begin
   Self.Create(Ethereum, aURL);
 end;
 
+constructor TWeb3.Create(const aURL: string; aTxType: Byte);
+begin
+  Self.Create(Ethereum, aURL, aTxType);
+end;
+
 constructor TWeb3.Create(aChain: TChain; const aURL: string);
 begin
   Self.Create(aChain, aURL, TJsonRpcHttps.Create);
 end;
 
+constructor TWeb3.Create(aChain: TChain; const aURL: string; aTxType: Byte);
+begin
+  Self.Create(aChain, aURL, aTxType, TJsonRpcHttps.Create);
+end;
+
 constructor TWeb3.Create(aChain: TChain; const aURL: string; aProtocol: IJsonRpc);
+begin
+  Self.Create(aChain, aURL, aChain.TxType, aProtocol);
+end;
+
+constructor TWeb3.Create(aChain: TChain; const aURL: string; aTxType: Byte; aProtocol: IJsonRpc);
 begin
   Self.FChain    := aChain;
   Self.FURL      := aURL;
+  Self.FTxType   := aTxType;
   Self.FProtocol := aProtocol;
 end;
 
@@ -533,13 +589,33 @@ begin
 end;
 
 constructor TWeb3Ex.Create(
+  const aURL: string;
+  aTxType   : Byte;
+  aProtocol : IPubSub;
+  aSecurity : TSecurity = TSecurity.Automatic);
+begin
+  Self.Create(Ethereum, aURL, aTxType, aProtocol, aSecurity);
+end;
+
+constructor TWeb3Ex.Create(
   aChain    : TChain;
   const aURL: string;
   aProtocol : IPubSub;
   aSecurity : TSecurity = TSecurity.Automatic);
 begin
+  Self.Create(aChain, aURL, aChain.TxType, aProtocol, aSecurity);
+end;
+
+constructor TWeb3Ex.Create(
+  aChain    : TChain;
+  const aURL: string;
+  aTxType   : Byte;
+  aProtocol : IPubSub;
+  aSecurity : TSecurity = TSecurity.Automatic);
+begin
   Self.FChain    := aChain;
   Self.FURL      := aURL;
+  Self.FTxType   := aTxType;
   Self.FProtocol := aProtocol;
   Self.FSecurity := aSecurity;
 end;

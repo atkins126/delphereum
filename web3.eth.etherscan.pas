@@ -141,7 +141,7 @@ uses
 function endpoint(chain: TChain; const apiKey: string): string;
 const
   ENDPOINT: array[TChain] of string = (
-    'https://api.etherscan.io/api?apikey=%s',                  // Mainnet
+    'https://api.etherscan.io/api?apikey=%s',                  // Ethereum
     'https://api-ropsten.etherscan.io/api?apikey=%s',          // Ropsten
     'https://api-rinkeby.etherscan.io/api?apikey=%s',          // Rinkeby
     'https://api-kovan.etherscan.io/api?apikey=%s',            // Kovan
@@ -227,7 +227,7 @@ end;
 
 function TErc20TransferEvent.Value: BigInteger;
 begin
-  Result := getPropAsBigInt(FJsonValue, 'value', 0);
+  Result := getPropAsBigInt(FJsonValue, 'value');
 end;
 
 {---------------------------- TErc20TransferEvents ----------------------------}
@@ -471,7 +471,7 @@ procedure TEtherscan.Get(
   const query : string;
   callback    : TAsyncJsonObject);
 begin
-  inherited Get(TGet.Create(endpoint(chain, TNetEncoding.URL.Encode(apiKey)) + query, callback));
+  inherited Get(TGet.Create(endpoint(chain, TNetEncoding.URL.Encode(apiKey)) + query, [], callback));
 end;
 
 var
@@ -521,7 +521,7 @@ begin
     if status = 0 then
       callback(0, TEtherscanError.Create(status, resp))
     else
-      callback(web3.json.getPropAsBigInt(resp, 'result', 0), nil);
+      callback(web3.json.getPropAsBigInt(resp, 'result'), nil);
   end);
 end;
 
