@@ -31,7 +31,6 @@ interface
 uses
   // Delphi
   System.Math,
-  System.Threading,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // web3
@@ -87,7 +86,7 @@ type
 
   TERC20 = class(TCustomContract, IERC20)
   strict private
-    FTask      : ITask;
+    FLogger    : ILogger;
     FOnTransfer: TOnTransfer;
     FOnApproval: TOnApproval;
     procedure SetOnTransfer(Value: TOnTransfer);
@@ -147,13 +146,13 @@ implementation
 constructor TERC20.Create(aClient: IWeb3; aContract: TAddress);
 begin
   inherited Create(aClient, aContract);
-  FTask := web3.eth.logs.get(aClient, aContract, OnLatestBlockMined);
+  FLogger := web3.eth.logs.get(aClient, aContract, OnLatestBlockMined);
 end;
 
 destructor TERC20.Destroy;
 begin
-  if FTask.Status = TTaskStatus.Running then
-    FTask.Cancel;
+  if FLogger.Status in [Running, Paused] then
+    FLogger.Stop;
   inherited Destroy;
 end;
 
@@ -161,12 +160,12 @@ procedure TERC20.EventChanged;
 begin
   if ListenForLatestBlock then
   begin
-    if not(FTask.Status in [TTaskStatus.WaitingToRun, TTaskStatus.Running]) then
-      FTask.Start;
+    if FLogger.Status in [Idle, Paused] then
+      FLogger.Start;
     EXIT;
   end;
-  if FTask.Status = TTaskStatus.Running then
-    FTask.Cancel;
+  if FLogger.Status = Running then
+    FLogger.Pause;
 end;
 
 function TERC20.ListenForLatestBlock: Boolean;
@@ -182,13 +181,13 @@ begin
       FOnTransfer(Self,
                   log.Topic[1].toAddress, // from
                   log.Topic[2].toAddress, // to
-                  log.Data[0].toBigInt);  // value
+                  log.Data[0].toUInt256); // value
   if Assigned(FOnApproval) then
     if log.isEvent('Approval(address,address,uint256)') then
       FOnApproval(Self,
                   log.Topic[1].toAddress, // owner
                   log.Topic[2].toAddress, // spender
-                  log.Data[0].toBigInt);  // value
+                  log.Data[0].toUInt256); // value
 end;
 
 procedure TERC20.SetOnTransfer(Value: TOnTransfer);
@@ -260,7 +259,7 @@ begin
       if dec.IsZero then
         callback(BigInteger.Create(amount), nil)
       else
-        callback(BigInteger.Create(amount * Power(10, dec.AsDouble)), nil);
+        callback(web3.utils.scale(amount, dec.AsInteger), nil);
   end);
 end;
 
@@ -274,7 +273,7 @@ begin
       if dec.IsZero then
         callback(amount.AsDouble, nil)
       else
-        callback(amount.AsDouble / Power(10, dec.AsDouble), nil);
+        callback(web3.utils.unscale(amount, dec.AsInteger), nil);
   end);
 end;
 
