@@ -325,7 +325,7 @@ const
     42,      // Kovan
     5,       // Goerli
     10,      // Optimism
-    69,      // Optimism_test_net
+    420,     // Optimism_test_net
     30,      // RSK
     31,      // RSK_test_net
     56,      // BSC
@@ -336,7 +336,7 @@ const
     250,     // Fantom
     4002,    // Fantom_test_net
     42161,   // Arbitrum
-    421611,  // Arbitrum_test_net
+    421613,  // Arbitrum_test_net
     11155111 // Sepolia
   );
 begin
@@ -381,25 +381,25 @@ end;
 function TChainHelper.BlockExplorerURL: string;
 const
   BLOCK_EXPLORER_URL: array[TChain] of string = (
-    'https://etherscan.io',                  // Ethereum
-    'https://ropsten.etherscan.io',          // Ropsten
-    'https://rinkeby.etherscan.io',          // Rinkeby
-    'https://kovan.etherscan.io',            // Kovan
-    'https://goerli.etherscan.io',           // Goerli
-    'https://optimistic.etherscan.io',       // Optimism
-    'https://kovan-optimistic.etherscan.io', // Optimism_test_net
-    'https://explorer.rsk.co',               // RSK
-    'https://explorer.testnet.rsk.co',       // RSK_test_net
-    'https://bscscan.com',                   // BSC
-    'https://testnet.bscscan.com',           // BSC_test_net
-    'https://blockscout.com/xdai/mainnet/',  // Gnosis
-    'https://polygonscan.com',               // Polygon
-    'https://mumbai.polygonscan.com',        // Polygon_test_net
-    'https://ftmscan.com',                   // Fantom
-    'https://testnet.ftmscan.com',           // Fantom_test_net
-    'https://explorer.arbitrum.io',          // Arbitrum
-    'https://rinkeby-explorer.arbitrum.io',  // Arbitrum_test_net
-    'https://sepolia.etherscan.io'           // Sepolia
+    'https://etherscan.io',                       // Ethereum
+    'https://ropsten.etherscan.io',               // Ropsten
+    'https://rinkeby.etherscan.io',               // Rinkeby
+    'https://kovan.etherscan.io',                 // Kovan
+    'https://goerli.etherscan.io',                // Goerli
+    'https://optimistic.etherscan.io',            // Optimism
+    'https://goerli-optimistic.etherscan.io',     // Optimism_test_net
+    'https://explorer.rsk.co',                    // RSK
+    'https://explorer.testnet.rsk.co',            // RSK_test_net
+    'https://bscscan.com',                        // BSC
+    'https://testnet.bscscan.com',                // BSC_test_net
+    'https://blockscout.com/xdai/mainnet/',       // Gnosis
+    'https://polygonscan.com',                    // Polygon
+    'https://mumbai.polygonscan.com',             // Polygon_test_net
+    'https://ftmscan.com',                        // Fantom
+    'https://testnet.ftmscan.com',                // Fantom_test_net
+    'https://explorer.arbitrum.io',               // Arbitrum
+    'https://goerli-rollup-explorer.arbitrum.io', // Arbitrum_test_net
+    'https://sepolia.etherscan.io'                // Sepolia
   );
 begin
   Result := BLOCK_EXPLORER_URL[Self];
@@ -498,24 +498,21 @@ begin
     EXIT;
   end;
 
-  const client: IWeb3 = Self;
-  const chainName = GetEnumName(TypeInfo(TChain), Ord(Chain));
-
-  from.ToString(client, procedure(const from: string; err: IError)
+  from.ToString(Self, procedure(const from: string; err: IError)
   begin
     if Assigned(err) then
     begin
       callback(False, err);
       EXIT;
     end;
-    &to.ToString(client, procedure(const &to: string; err: IError)
+    &to.ToString(Self, procedure(const &to: string; err: IError)
     begin
       if Assigned(err) then
       begin
         callback(False, err);
         EXIT;
       end;
-      web3.eth.chainlink.ETH_USD(client, procedure(price: Double; err: IError)
+      web3.eth.chainlink.ETH_USD(Self, procedure(price: Double; err: IError)
       begin
         if Assigned(err) then
         begin
@@ -529,7 +526,7 @@ begin
           modalResult := MessageDlg(Format(
             RS_SIGNATURE_REQUEST,
             [
-              chainName,                                                  // Network
+              GetEnumName(TypeInfo(TChain), Ord(Chain)),                  // Network
               from,                                                       // From
               &to,                                                        // To
               fromWei(gasPrice, gwei, 2),                                 // Gas price (gwei)

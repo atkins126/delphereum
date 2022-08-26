@@ -59,7 +59,7 @@ const
     { Kovan             } ('https://kovan.infura.io/v3/%s', 'wss://kovan.infura.io/ws/v3/%s'),
     { Goerli            } ('https://goerli.infura.io/v3/%s', 'wss://goerli.infura.io/ws/v3/%s'),
     { Optimism          } ('https://optimism-mainnet.infura.io/v3/%s', ''),
-    { Optimism_test_net } ('https://optimism-kovan.infura.io/v3/%s', ''),
+    { Optimism_test_net } ('https://optimism-goerli.infura.io/v3/%s', ''),
     { RSK               } ('https://public-node.rsk.co', ''),
     { RSK_test_net      } ('https://public-node.testnet.rsk.co', ''),
     { BSC               } ('https://bsc-dataseed.binance.org', ''),
@@ -70,7 +70,7 @@ const
     { Fantom            } ('https://rpc.ftm.tools', ''),
     { Fantom_test_net   } ('https://rpc.testnet.fantom.network', ''),
     { Arbitrum          } ('https://arbitrum-mainnet.infura.io/v3/%s', ''),
-    { Arbitrum_test_net } ('https://arbitrum-rinkeby.infura.io/v3/%s', ''),
+    { Arbitrum_test_net } ('https://arbitrum-goerli.infura.io/v3/%s', ''),
     { Sepolia           } ('https://nunki.htznr.fault.dev/rpc', 'wss://nunki.htznr.fault.dev/ws')
   );
 begin
