@@ -38,53 +38,54 @@ uses
   web3,
   web3.eth,
   web3.eth.abi,
-  web3.eth.gas.station,
   web3.eth.types,
   web3.json,
   web3.json.rpc,
   web3.utils;
 
-procedure getGasPrice(client: IWeb3; callback: TAsyncQuantity; allowCustom: Boolean = True);
-procedure getBaseFeePerGas(client: IWeb3; callback: TAsyncQuantity);
-procedure getMaxPriorityFeePerGas(client: IWeb3; callback: TAsyncQuantity);
-procedure getMaxFeePerGas(client: IWeb3; callback: TAsyncQuantity; allowCustom: Boolean = True);
+procedure getGasPrice(client: IWeb3; callback: TProc<BigInteger, IError>; allowCustom: Boolean = True);
+procedure getBaseFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>);
+procedure getMaxPriorityFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>);
+procedure getMaxFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>; allowCustom: Boolean = True);
 
 procedure estimateGas(
   client    : IWeb3;
   from, &to : TAddress;
   const func: string;
   args      : array of const;
-  callback  : TAsyncQuantity); overload;
+  callback  : TProc<BigInteger, IError>); overload;
 procedure estimateGas(
   client    : IWeb3;
   from, &to : TAddress;
   const data: string;
-  callback  : TAsyncQuantity); overload;
+  callback  : TProc<BigInteger, IError>); overload;
 
 implementation
 
-procedure eth_gasPrice(client: IWeb3; callback: TAsyncQuantity);
+procedure eth_gasPrice(client: IWeb3; callback: TProc<BigInteger, IError>);
 begin
-  client.Call('eth_gasPrice', [], procedure(resp: TJsonObject; err: IError)
+  client.Call('eth_gasPrice', [], procedure(response: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback(0, err)
     else
-      callback(web3.json.getPropAsStr(resp, 'result'), nil);
+      callback(web3.json.getPropAsStr(response, 'result'), nil);
   end);
 end;
 
-procedure getGasPrice(client: IWeb3; callback: TAsyncQuantity; allowCustom: Boolean);
+procedure getGasPrice(client: IWeb3; callback: TProc<BigInteger, IError>; allowCustom: Boolean);
 begin
-  const info = client.GetGasStationInfo;
-
-  if (info.Custom > 0) and allowCustom then
+  if allowCustom then
   begin
-    callback(info.Custom, nil);
-    EXIT;
+    const price = client.GetCustomGasPrice;
+    if price > 0 then
+    begin
+      callback(price, nil);
+      EXIT;
+    end;
   end;
 
-  if client.TxType >= 2 then // EIP-1559
+  if client.Chain.TxType >= 2 then // EIP-1559
   begin
     getBaseFeePerGas(client, procedure(baseFee: TWei; err: IError)
     begin
@@ -102,27 +103,10 @@ begin
     EXIT;
   end;
 
-  if (info.apiKey = '') and (info.Speed = Medium) then
-  begin
-    eth_gasPrice(client, callback);
-    EXIT;
-  end;
-
-  web3.eth.gas.station.getGasPrice(info.apiKey, procedure(price: IGasPrice; err: IError)
-  begin
-    if Assigned(err) then
-      callback(0, err)
-    else
-      case info.Speed of
-        Fastest: callback(price.Fastest, nil);
-        Fast   : callback(price.Fast,    nil);
-        Medium : callback(price.Average, nil);
-        Low    : callback(price.SafeLow, nil);
-      end;
-  end);
+  eth_gasPrice(client, callback);
 end;
 
-procedure getBaseFeePerGas(client: IWeb3; callback: TAsyncQuantity);
+procedure getBaseFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>);
 begin
   web3.eth.getBlockByNumber(client, procedure(block: IBlock; err: IError)
   begin
@@ -133,24 +117,10 @@ begin
   end);
 end;
 
-procedure getMaxPriorityFeePerGas(client: IWeb3; callback: TAsyncQuantity);
-var
-  adjustForSpeed: TFunc<BigInteger, TGasPrice, BigInteger>; // (input, speed) -> output
+procedure getMaxPriorityFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>);
 begin
-  adjustForSpeed := function(tip: BigInteger; speed: TGasPrice): BigInteger
+  client.Call('eth_maxPriorityFeePerGas', [], procedure(response: TJsonObject; err: IError)
   begin
-    case speed of
-      Fastest: Result := tip * 2;          // probably ~4 Gwei
-      Fast   : Result := tip + 1000000000; // probably ~3 Gwei
-      Medium : Result := tip;              // probably ~2 Gwei
-      Low    : Result := 1000000000;       // 1 Gwei
-    end;
-  end;
-
-  client.Call('eth_maxPriorityFeePerGas', [], procedure(resp: TJsonObject; err: IError)
-  begin
-    const info = client.GetGasStationInfo;
-
     if Assigned(err) then
     begin
       eth_gasPrice(client, procedure(gasPrice: TWei; err: IError)
@@ -163,24 +133,25 @@ begin
             if Assigned(err) then
               callback(0, err)
             else
-              callback(adjustForSpeed(TWei.Max(1000000000, gasPrice - baseFee), info.Speed), nil);
+              callback(TWei.Max(1000000000, gasPrice - baseFee), nil);
           end);
       end);
       EXIT;
     end;
-
-    callback(adjustForSpeed(web3.json.getPropAsStr(resp, 'result'), info.Speed), nil);
+    callback(TWei.Max(1000000000, web3.json.getPropAsStr(response, 'result')), nil);
   end);
 end;
 
-procedure getMaxFeePerGas(client: IWeb3; callback: TAsyncQuantity; allowCustom: Boolean);
+procedure getMaxFeePerGas(client: IWeb3; callback: TProc<BigInteger, IError>; allowCustom: Boolean);
 begin
-  const info = client.GetGasStationInfo;
-
-  if (info.Custom > 0) and allowCustom then
+  if allowCustom then
   begin
-    callback(info.Custom, nil);
-    EXIT;
+    const price = client.GetCustomGasPrice;
+    if price > 0 then
+    begin
+      callback(price, nil);
+      EXIT;
+    end;
   end;
 
   getBaseFeePerGas(client, procedure(baseFee: TWei; err: IError)
@@ -203,7 +174,7 @@ procedure estimateGas(
   from, &to : TAddress;
   const func: string;
   args      : array of const;
-  callback  : TAsyncQuantity);
+  callback  : TProc<BigInteger, IError>);
 begin
   estimateGas(client, from, &to, web3.eth.abi.encode(func, args), callback);
 end;
@@ -212,27 +183,25 @@ procedure estimateGas(
   client    : IWeb3;
   from, &to : TAddress;
   const data: string;
-  callback  : TAsyncQuantity);
+  callback  : TProc<BigInteger, IError>);
 type
-  Teth_estimateGas = reference to procedure(client: IWeb3; const json: string; callback: TAsyncQuantity);
-  TdoEstimateGasEx = reference to procedure(client: IWeb3; from, &to: TAddress; &strict: Boolean; callback: TAsyncQuantity);
+  Teth_estimateGas = reference to procedure(client: IWeb3; const json: string; callback: TProc<BigInteger, IError>);
+  TdoEstimateGasEx = reference to procedure(client: IWeb3; from, &to: TAddress; &strict: Boolean; callback: TProc<BigInteger, IError>);
 var
   eth_estimateGas: Teth_estimateGas;
   doEstimateGasEx: TdoEstimateGasEx;
 begin
   // estimate how much gas is necessary for the transaction to complete (without creating a transaction on the blockchain)
-  eth_estimateGas := procedure(client: IWeb3; const json: string; callback: TAsyncQuantity)
+  eth_estimateGas := procedure(client: IWeb3; const json: string; callback: TProc<BigInteger, IError>)
   begin
     const obj = web3.json.unmarshal(json) as TJsonObject;
     try
-      client.Call('eth_estimateGas', [obj], procedure(resp: TJsonObject; err: IError)
+      client.Call('eth_estimateGas', [obj], procedure(response: TJsonObject; err: IError)
       begin
         if Assigned(err) then
-        begin
-          callback(0, err);
-          EXIT;
-        end;
-        callback(web3.json.getPropAsStr(resp, 'result'), nil);
+          callback(0, err)
+        else
+          callback(web3.json.getPropAsStr(response, 'result'), nil);
       end);
     finally
       obj.Free;
@@ -240,7 +209,7 @@ begin
   end;
 
   // if strict, then factor in your gas price (otherwise ignore your gas price while estimating gas)
-  doEstimateGasEx := procedure(client: IWeb3; from, &to: TAddress; &strict: Boolean; callback: TAsyncQuantity)
+  doEstimateGasEx := procedure(client: IWeb3; from, &to: TAddress; &strict: Boolean; callback: TProc<BigInteger, IError>)
   begin
     if not &strict then
     begin
@@ -251,7 +220,7 @@ begin
       EXIT;
     end;
     // construct the eip-1559 transaction call object
-    if client.TxType >= 2 then
+    if client.Chain.TxType >= 2 then
     begin
       getMaxPriorityFeePerGas(client, procedure(tip: TWei; err: IError)
       begin

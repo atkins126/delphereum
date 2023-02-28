@@ -31,34 +31,29 @@ interface
 uses
   // Delphi
   System.JSON,
+  System.SysUtils,
   // web3
   web3,
-  web3.http.throttler,
   web3.json.rpc;
 
 type
   TJsonRpcHttps = class(TCustomJsonRpc, IJsonRpc)
-  strict private
-    FThrottler: IThrottler;
   public
     function Call(
       const URL   : string;
       const method: string;
-      args        : array of const): TJsonObject; overload;
+      args        : array of const): IResult<TJsonObject>; overload;
     procedure Call(
       const URL   : string;
       const method: string;
       args        : array of const;
-      callback    : TAsyncJsonObject); overload;
-    constructor Create; overload;
-    constructor Create(const throttler: IThrottler); overload;
+      callback    : TProc<TJsonObject, IError>); overload;
   end;
 
 implementation
 
 uses
   // Delphi
-  System.Classes,
   System.Net.URLClient,
   // web3
   web3.http,
@@ -66,52 +61,37 @@ uses
 
 { TJsonRpcHttps }
 
-constructor TJsonRpcHttps.Create;
-begin
-  inherited Create;
-end;
-
-constructor TJsonRpcHttps.Create(const throttler: IThrottler);
-begin
-  inherited Create;
-  FThrottler := throttler;
-end;
-
 function TJsonRpcHttps.Call(
   const URL   : string;
   const method: string;
-  args        : array of const): TJsonObject;
+  args        : array of const): IResult<TJsonObject>;
 begin
-  Result := nil;
-  var resp: TJsonValue;
-  web3.http.post(
-    URL,
-    CreatePayload(method, args),
-    [TNetHeader.Create('Content-Type', 'application/json')],
-    resp
-  );
-  if Assigned(resp) then
+  const response = web3.http.post(URL, CreatePayload(method, args));
+  if Assigned(response.Value) then
   try
-    // did we receive an error? then translate that into an exception
-    const error = web3.json.getPropAsObj(resp, 'error');
+    // did we receive an error? then translate that into an IError
+    const error = web3.json.getPropAsObj(response.Value, 'error');
     if Assigned(error) then
-      raise EJsonRpc.Create(
+      Result := TResult<TJsonObject>.Err(nil, TJsonRpcError.Create(
         web3.json.getPropAsInt(error, 'code'),
         web3.json.getPropAsStr(error, 'message')
-      );
-    Result := resp.Clone as TJsonObject;
+      ))
+    else
+      Result := TResult<TJsonObject>.Ok(response.Value.Clone as TJsonObject);
+    EXIT;
   finally
-    resp.Free;
+    response.Value.Free;
   end;
+  Result := TResult<TJsonObject>.Err(nil, response.Error);
 end;
 
 procedure TJsonRpcHttps.Call(
   const URL   : string;
   const method: string;
   args        : array of const;
-  callback    : TAsyncJsonObject);
+  callback    : TProc<TJsonObject, IError>);
 begin
-  const handler: TAsyncJsonObject = procedure(resp: TJsonObject; err: IError)
+  web3.http.post(URL, CreatePayload(method, args), [TNetHeader.Create('Content-Type', 'application/json')], procedure(response: TJsonValue; err: IError)
   begin
     if Assigned(err) then
     begin
@@ -119,27 +99,19 @@ begin
       EXIT;
     end;
     // did we receive an error?
-    const error = web3.json.getPropAsObj(resp, 'error');
+    const error = web3.json.getPropAsObj(response, 'error');
     if Assigned(error) then
-      callback(resp, TJsonRpcError.Create(
+      callback(nil, TJsonRpcError.Create(
         web3.json.getPropAsInt(error, 'code'),
         web3.json.getPropAsStr(error, 'message')
       ))
     else
-      // if we reached this far, then we have a valid response object
-      callback(resp, nil);
-  end;
-
-  const payload = CreatePayload(method, args);
-  const headers: TNetHeaders = [TNetHeader.Create('Content-Type', 'application/json')];
-
-  if Assigned(FThrottler) then
-  begin
-    FThrottler.Post(TPost.Create(URL, payload, headers, handler));
-    EXIT;
-  end;
-
-  web3.http.post(URL, payload, headers, handler);
+      if Assigned(response) and (response is TJsonObject) then
+        // if we reached this far, then we have a valid response object
+        callback(TJsonObject(response), nil)
+      else
+        callback(nil, TError.Create('not a JSON object'));
+  end);
 end;
 
 end.

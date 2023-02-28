@@ -30,6 +30,7 @@ interface
 
 uses
   // Delphi
+  System.JSON,
   System.SysUtils,
   System.Types,
   // web3
@@ -39,14 +40,14 @@ type
   TOnline = (Unknown, Offline, Online);
 
   INode = interface
-    function Chain: TChain;
-    function Free: Boolean;
+    function Client(apiKey: TFunc<string>): TWeb3;
+    function Freeware: Boolean;
     function Name: string;
-    procedure Online(callback: TProc<TOnline, IError>);
-    function Rpc: string;
+    procedure Online(apiKey: TFunc<string>; callback: TProc<TOnline, IError>);
+    function Rpc(apiKey: TFunc<string>): TURL;
     function SetTag(const Value: IInterface): INode;
     function Tag: IInterface;
-    function Wss: string;
+    function Wss(apiKey: TFunc<string>): TURL;
   end;
 
   TNodes = TArray<INode>;
@@ -56,7 +57,7 @@ type
     function Length: Integer;
   end;
 
-function get(chain: TChain; callback: TAsyncJsonArray): IAsyncResult; overload;
+function get(chain: TChain; callback: TProc<TJsonArray, IError>): IAsyncResult; overload;
 function get(chain: TChain; callback: TProc<TNodes, IError>): IAsyncResult; overload;
 
 implementation
@@ -65,7 +66,6 @@ uses
   // Delphi
   System.Classes,
   System.Generics.Collections,
-  System.JSON,
 {$IFDEF FMX}
   FMX.Dialogs,
 {$ELSE}
@@ -81,44 +81,44 @@ resourcestring
   RS_API_KEY = 'Please paste your API key';
 
 type
-  TNode = class(TCustomDeserialized<TJsonObject>, INode)
+  TNode = class(TCustomDeserialized, INode)
   private
-    FChain: TChain;
-    FFree : Boolean;
-    FName : string;
-    FRpc  : string;
-    FTag  : IInterface;
-    FWss  : string;
+    FChain   : TChain;
+    FFreeware: Boolean;
+    FName    : string;
+    FTag     : IInterface;
+    function Rpc(getApiKey: TFunc<string>): TURL;
+    function Wss(getApiKey: TFunc<string>): TURL;
   public
-    function Chain: TChain;
-    function Free: Boolean;
+    function Client(apiKey: TFunc<string>): TWeb3;
+    function Freeware: Boolean;
     function Name: string;
-    procedure Online(callback: TProc<TOnline, IError>);
-    function Rpc: string;
+    procedure Online(apiKey: TFunc<string>; callback: TProc<TOnline, IError>);
     function SetTag(const Value: IInterface): INode;
     function Tag: IInterface;
-    function Wss: string;
     constructor Create(aChain: TChain; const aJsonValue: TJsonObject); reintroduce;
   end;
 
 constructor TNode.Create(aChain: TChain; const aJsonValue: TJsonObject);
 begin
   inherited Create(aJsonValue);
+
   FChain := aChain;
-  FName  := getPropAsStr(aJsonValue, 'name');
-  FRpc   := getPropAsStr(aJsonValue, 'rpc');
-  FWss   := getPropAsStr(aJsonValue, 'wss');
-  FFree  := FRpc.IndexOf('$apiKey') = -1;
+  FChain.RPC[HTTPS] := getPropAsStr(aJsonValue, 'rpc');
+  FChain.RPC[WebSocket] := getPropAsStr(aJsonValue, 'wss');
+
+  FFreeware := FChain.RPC[HTTPS].IndexOf('$apiKey') = -1;
+  FName     := getPropAsStr(aJsonValue, 'name');
 end;
 
-function TNode.Chain: TChain;
+function TNode.Client(apiKey: TFunc<string>): TWeb3;
 begin
-  Result := FChain;
+  Result := TWeb3.Create(Self.FChain.SetRPC(HTTPS, Self.Rpc(apiKey)));
 end;
 
-function TNode.Free: Boolean;
+function TNode.Freeware: Boolean;
 begin
-  Result := FFree;
+  Result := FFreeware;
 end;
 
 function TNode.Name: string;
@@ -126,15 +126,15 @@ begin
   Result := FName;
 end;
 
-procedure TNode.Online(callback: TProc<TOnline, IError>);
+procedure TNode.Online(apiKey: TFunc<string>; callback: TProc<TOnline, IError>);
 begin
-  if Self.Rpc.IndexOf('$apiKey') > -1 then
+  if Self.Rpc(apiKey).IndexOf('$apiKey') > -1 then
   begin
     callback(TOnline.Unknown, nil);
     EXIT;
   end;
-  const client: IWeb3 = TWeb3.Create(Self.Chain, Self.Rpc);
-  client.Call('eth_chainId', [], procedure(resp: TJsonObject; err: IError)
+  const client: IWeb3 = TWeb3.Create(Self.FChain);
+  client.Call('eth_chainId', [], procedure(response: TJsonObject; err: IError)
   begin
     if not Assigned(err) then
       callback(TOnline.Online, err)
@@ -143,21 +143,22 @@ begin
   end);
 end;
 
-function TNode.Rpc: string;
+function TNode.Rpc(getApiKey: TFunc<string>): TURL;
 begin
-  if FRpc.IndexOf('$apiKey') > -1 then
+  if FChain.RPC[HTTPS].IndexOf('$apiKey') > -1 then
   begin
-    var apiKey: string;
-    TThread.Synchronize(nil, procedure
-    begin
+    var apiKey := '';
+    if Assigned(getApiKey) then apiKey := getApiKey;
+    if apiKey = '' then
+      TThread.Synchronize(nil, procedure
+      begin
 {$WARN SYMBOL_DEPRECATED OFF}
-      apiKey := Trim(InputBox(Self.Name, RS_API_KEY, ''));
+        apiKey := Trim(InputBox(Self.Name, RS_API_KEY, ''));
 {$WARN SYMBOL_DEPRECATED DEFAULT}
-      if apiKey <> '' then
-        FRpc := FRpc.Replace('$apiKey', apiKey);
-    end);
+      end);
+    if apiKey <> '' then FChain.RPC[HTTPS] := FChain.RPC[HTTPS].Replace('$apiKey', apiKey);
   end;
-  Result := FRpc;
+  Result := FChain.RPC[HTTPS];
 end;
 
 function TNode.SetTag(const Value: IInterface): INode;
@@ -171,21 +172,22 @@ begin
   Result := FTag;
 end;
 
-function TNode.Wss: string;
+function TNode.Wss(getApiKey: TFunc<string>): TURL;
 begin
-  if FWss.IndexOf('$apiKey') > -1 then
+  if FChain.RPC[WebSocket].IndexOf('$apiKey') > -1 then
   begin
     var apiKey: string;
-    TThread.Synchronize(nil, procedure
-    begin
+    if Assigned(getApiKey) then apiKey := getApiKey;
+    if apiKey = '' then
+      TThread.Synchronize(nil, procedure
+      begin
 {$WARN SYMBOL_DEPRECATED OFF}
-      apiKey := Trim(InputBox(Self.Name, RS_API_KEY, ''));
+        apiKey := Trim(InputBox(Self.Name, RS_API_KEY, ''));
 {$WARN SYMBOL_DEPRECATED DEFAULT}
-      if apiKey <> '' then
-        FWss := FWss.Replace('$apiKey', apiKey);
-    end);
+      end);
+    if apiKey <> '' then FChain.RPC[WebSocket] := FChain.RPC[WebSocket].Replace('$apiKey', apiKey);
   end;
-  Result := FWss;
+  Result := FChain.RPC[WebSocket];
 end;
 
 {------------------------------- TNodesHelper ---------------------------------}
@@ -223,9 +225,9 @@ end;
 
 {------------------------------ public functions ------------------------------}
 
-function get(chain: TChain; callback: TAsyncJsonArray): IAsyncResult;
+function get(chain: TChain; callback: TProc<TJsonArray, IError>): IAsyncResult;
 begin
-  Result := web3.http.get('https://raw.githubusercontent.com/svanas/ethereum-node-list/main/ethereum-node-list.json', [], procedure(obj: TJsonObject; err: IError)
+  Result := web3.http.get('https://raw.githubusercontent.com/svanas/ethereum-node-list/main/ethereum-node-list.json', [], procedure(obj: TJsonValue; err: IError)
   begin
     if Assigned(err) or not Assigned(obj) then
     begin
@@ -234,7 +236,7 @@ begin
     end;
     const chains = getPropAsArr(obj, 'chains');
     for var C in chains do
-      if getPropAsInt(C, 'id') = chain.Id then
+      if getPropAsInt(C, 'id') = Integer(chain.Id) then
       begin
         callback(getPropAsArr(C, 'nodes'), nil);
         EXIT;

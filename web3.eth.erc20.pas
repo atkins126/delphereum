@@ -30,7 +30,7 @@ interface
 
 uses
   // Delphi
-  System.Math,
+  System.SysUtils,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // web3
@@ -53,35 +53,30 @@ type
     Spender: TAddress;
     Value  : BigInteger);
 
-  IERC20 = interface
+  IERC20 = interface(ICustomContract)
     //------- read from contract -----------------------------------------------
-    procedure Name       (callback: TAsyncString);
-    procedure Symbol     (callback: TAsyncString);
-    procedure Decimals   (callback: TAsyncQuantity);
-    procedure TotalSupply(callback: TAsyncQuantity);
-    procedure BalanceOf  (owner: TAddress; callback: TAsyncQuantity);
-    procedure Allowance  (owner, spender: TAddress; callback: TAsyncQuantity);
+    procedure Name       (callback: TProc<string, IError>);
+    procedure Symbol     (callback: TProc<string, IError>);
+    procedure Decimals   (callback: TProc<BigInteger, IError>);
+    procedure TotalSupply(callback: TProc<BigInteger, IError>);
+    procedure BalanceOf  (owner: TAddress; callback: TProc<BigInteger, IError>);
+    procedure Allowance  (owner, spender: TAddress; callback: TProc<BigInteger, IError>);
     //------- write to contract ------------------------------------------------
     procedure Transfer(
       from    : TPrivateKey;
       &to     : TAddress;
       value   : BigInteger;
-      callback: TAsyncTxHash);
+      callback: TProc<TTxHash, IError>);
     procedure TransferEx(
       from    : TPrivateKey;
       &to     : TAddress;
       value   : BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
     procedure Approve(
       owner   : TPrivateKey;
       spender : TAddress;
       value   : BigInteger;
-      callback: TAsyncReceipt);
-    procedure ApproveEx(
-      owner   : TPrivateKey;
-      spender : TAddress;
-      value   : BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
   end;
 
   TERC20 = class(TCustomContract, IERC20)
@@ -94,52 +89,89 @@ type
   protected
     procedure EventChanged;
     function  ListenForLatestBlock: Boolean; virtual;
-    procedure OnLatestBlockMined(log: TLog); virtual;
+    procedure OnLatestBlockMined(log: PLog; err: IError); virtual;
   public
     constructor Create(aClient: IWeb3; aContract: TAddress); override;
     destructor  Destroy; override;
 
     //------- read from contract -----------------------------------------------
-    procedure Name       (callback: TAsyncString);
-    procedure Symbol     (callback: TAsyncString);
-    procedure Decimals   (callback: TAsyncQuantity);
-    procedure TotalSupply(callback: TAsyncQuantity); overload;
-    procedure TotalSupply(const block: string; callback: TAsyncQuantity); overload;
-    procedure BalanceOf  (owner: TAddress; callback: TAsyncQuantity);
-    procedure Allowance  (owner, spender: TAddress; callback: TAsyncQuantity);
+    procedure Name       (callback: TProc<string, IError>);
+    procedure Symbol     (callback: TProc<string, IError>);
+    procedure Decimals   (callback: TProc<BigInteger, IError>);
+    procedure TotalSupply(callback: TProc<BigInteger, IError>); overload;
+    procedure TotalSupply(const block: string; callback: TProc<BigInteger, IError>); overload;
+    procedure BalanceOf  (owner: TAddress; callback: TProc<BigInteger, IError>);
+    procedure Allowance  (owner, spender: TAddress; callback: TProc<BigInteger, IError>);
 
     //------- helpers ----------------------------------------------------------
-    procedure Scale  (amount: Double; callback: TAsyncQuantity);
-    procedure Unscale(amount: BigInteger; callback: TAsyncFloat);
+    procedure Scale  (amount: Double; callback: TProc<BigInteger, IError>);
+    procedure Unscale(amount: BigInteger; callback: TProc<Double, IError>);
 
     //------- write to contract ------------------------------------------------
     procedure Transfer(
       from    : TPrivateKey;
       &to     : TAddress;
       value   : BigInteger;
-      callback: TAsyncTxHash);
+      callback: TProc<TTxHash, IError>);
     procedure TransferEx(
       from    : TPrivateKey;
       &to     : TAddress;
       value   : BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
     procedure Approve(
       owner   : TPrivateKey;
       spender : TAddress;
       value   : BigInteger;
-      callback: TAsyncReceipt);
-    procedure ApproveEx(
-      owner   : TPrivateKey;
-      spender : TAddress;
-      value   : BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
 
     //------- events -----------------------------------------------------------
     property OnTransfer: TOnTransfer read FOnTransfer write SetOnTransfer;
     property OnApproval: TOnApproval read FOnApproval write SetOnApproval;
   end;
 
+function create(client: IWeb3; contract: TAddress): IERC20;
+
+procedure approve(
+  token  : IERC20;
+  owner  : TPrivateKey;
+  spender: TAddress;
+  value  : BigInteger;
+  callback: TProc<ITxReceipt, IError>);
+
 implementation
+
+function create(client: IWeb3; contract: TAddress): IERC20;
+begin
+  Result := TERC20.Create(client, contract);
+end;
+
+procedure approve(
+  token   : IERC20;
+  owner   : TPrivateKey;
+  spender : TAddress;
+  value   : BigInteger;
+  callback: TProc<ITxReceipt, IError>);
+begin
+  owner.GetAddress
+    .ifErr(procedure(err: IError)
+    begin
+      callback(nil, err)
+    end)
+    .&else(procedure(address: TAddress)
+    begin
+      token.Allowance(address, spender, procedure(approved: BigInteger; err: IError)
+      begin
+        if Assigned(err) then
+          callback(nil, err)
+        else
+          if ((value = 0) and (approved = 0))
+          or ((value > 0) and (approved >= value)) then
+            callback(nil, nil)
+          else
+            token.Approve(owner, spender, value, callback);
+      end);
+    end);
+end;
 
 { TERC20 }
 
@@ -151,8 +183,7 @@ end;
 
 destructor TERC20.Destroy;
 begin
-  if FLogger.Status in [Running, Paused] then
-    FLogger.Stop;
+  if FLogger.Status in [Running, Paused] then FLogger.Stop;
   inherited Destroy;
 end;
 
@@ -160,34 +191,35 @@ procedure TERC20.EventChanged;
 begin
   if ListenForLatestBlock then
   begin
-    if FLogger.Status in [Idle, Paused] then
-      FLogger.Start;
+    if FLogger.Status in [Idle, Paused] then FLogger.Start;
     EXIT;
   end;
-  if FLogger.Status = Running then
-    FLogger.Pause;
+  if FLogger.Status = Running then FLogger.Pause;
 end;
 
 function TERC20.ListenForLatestBlock: Boolean;
 begin
-  Result := Assigned(FOnTransfer)
-         or Assigned(FOnApproval);
+  Result := Assigned(FOnTransfer) or Assigned(FOnApproval);
 end;
 
-procedure TERC20.OnLatestBlockMined(log: TLog);
+procedure TERC20.OnLatestBlockMined(log: PLog; err: IError);
 begin
+  if not Assigned(log) then
+    EXIT;
+
   if Assigned(FOnTransfer) then
-    if log.isEvent('Transfer(address,address,uint256)') then
+    if log^.isEvent('Transfer(address,address,uint256)') then
       FOnTransfer(Self,
-                  log.Topic[1].toAddress, // from
-                  log.Topic[2].toAddress, // to
-                  log.Data[0].toUInt256); // value
+                  log^.Topic[1].toAddress, // from
+                  log^.Topic[2].toAddress, // to
+                  log^.Data[0].toUInt256); // value
+
   if Assigned(FOnApproval) then
-    if log.isEvent('Approval(address,address,uint256)') then
+    if log^.isEvent('Approval(address,address,uint256)') then
       FOnApproval(Self,
-                  log.Topic[1].toAddress, // owner
-                  log.Topic[2].toAddress, // spender
-                  log.Data[0].toUInt256); // value
+                  log^.Topic[1].toAddress, // owner
+                  log^.Topic[2].toAddress, // spender
+                  log^.Data[0].toUInt256); // value
 end;
 
 procedure TERC20.SetOnTransfer(Value: TOnTransfer);
@@ -202,7 +234,7 @@ begin
   EventChanged;
 end;
 
-procedure TERC20.Name(callback: TAsyncString);
+procedure TERC20.Name(callback: TProc<string, IError>);
 begin
   web3.eth.call(Client, Contract, 'name()', [], procedure(tup: TTuple; err: IError)
   begin
@@ -213,7 +245,7 @@ begin
   end);
 end;
 
-procedure TERC20.Symbol(callback: TAsyncString);
+procedure TERC20.Symbol(callback: TProc<string, IError>);
 begin
   web3.eth.call(Client, Contract, 'symbol()', [], procedure(tup: TTuple; err: IError)
   begin
@@ -224,32 +256,32 @@ begin
   end);
 end;
 
-procedure TERC20.Decimals(callback: TAsyncQuantity);
+procedure TERC20.Decimals(callback: TProc<BigInteger, IError>);
 begin
   web3.eth.call(Client, Contract, 'decimals()', [], callback);
 end;
 
-procedure TERC20.TotalSupply(callback: TAsyncQuantity);
+procedure TERC20.TotalSupply(callback: TProc<BigInteger, IError>);
 begin
   web3.eth.call(Client, Contract, 'totalSupply()', [], callback);
 end;
 
-procedure TERC20.TotalSupply(const block: string; callback: TAsyncQuantity);
+procedure TERC20.TotalSupply(const block: string; callback: TProc<BigInteger, IError>);
 begin
   web3.eth.call(Client, Contract, 'totalSupply()', block, [], callback);
 end;
 
-procedure TERC20.BalanceOf(owner: TAddress; callback: TAsyncQuantity);
+procedure TERC20.BalanceOf(owner: TAddress; callback: TProc<BigInteger, IError>);
 begin
   web3.eth.call(Client, Contract, 'balanceOf(address)', [owner], callback);
 end;
 
-procedure TERC20.Allowance(owner, spender: TAddress; callback: TAsyncQuantity);
+procedure TERC20.Allowance(owner, spender: TAddress; callback: TProc<BigInteger, IError>);
 begin
   web3.eth.call(Client, Contract, 'allowance(address,address)', [owner, spender], callback);
 end;
 
-procedure TERC20.Scale(amount: Double; callback: TAsyncQuantity);
+procedure TERC20.Scale(amount: Double; callback: TProc<BigInteger, IError>);
 begin
   Self.Decimals(procedure(dec: BigInteger; err: IError)
   begin
@@ -263,7 +295,7 @@ begin
   end);
 end;
 
-procedure TERC20.Unscale(amount: BigInteger; callback: TAsyncFloat);
+procedure TERC20.Unscale(amount: BigInteger; callback: TProc<Double, IError>);
 begin
   Self.Decimals(procedure(dec: BigInteger; err: IError)
   begin
@@ -281,7 +313,7 @@ procedure TERC20.Transfer(
   from    : TPrivateKey;
   &to     : TAddress;
   value   : BigInteger;
-  callback: TAsyncTxHash);
+  callback: TProc<TTxHash, IError>);
 begin
   web3.eth.write(Client, from, Contract, 'transfer(address,uint256)', [&to, web3.utils.toHex(value)], callback);
 end;
@@ -290,7 +322,7 @@ procedure TERC20.TransferEx(
   from    : TPrivateKey;
   &to     : TAddress;
   value   : BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
   web3.eth.write(Client, from, Contract, 'transfer(address,uint256)', [&to, web3.utils.toHex(value)], callback);
 end;
@@ -299,34 +331,9 @@ procedure TERC20.Approve(
   owner   : TPrivateKey;
   spender : TAddress;
   value   : BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
   web3.eth.write(Client, owner, Contract, 'approve(address,uint256)', [spender, web3.utils.toHex(value)], callback);
-end;
-
-procedure TERC20.ApproveEx(
-  owner   : TPrivateKey;
-  spender : TAddress;
-  value   : BigInteger;
-  callback: TAsyncReceipt);
-begin
-  owner.Address(procedure(addr: TAddress; err: IError)
-  begin
-    if Assigned(err) then
-      callback(nil, err)
-    else
-      Allowance(addr, spender, procedure(approved: BigInteger; err: IError)
-      begin
-        if Assigned(err) then
-          callback(nil, err)
-        else
-          if ((value = 0) and (approved = 0))
-          or ((value > 0) and (approved >= value)) then
-            callback(nil, nil)
-          else
-            Approve(owner, spender, value, callback);
-      end);
-  end);
 end;
 
 end.

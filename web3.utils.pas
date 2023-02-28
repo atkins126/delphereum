@@ -66,16 +66,28 @@ function unscale(amount: BigInteger; decimals: Byte): Double;
 
 function  sha3(const hex: string): TBytes; overload;
 function  sha3(const buf: TBytes): TBytes; overload;
-procedure sha3(client: IWeb3; const hex: string; callback: TAsyncString); overload;
+procedure sha3(client: IWeb3; const hex: string; callback: TProc<string, IError>); overload;
+
+function sha256(const input: TBytes): TBytes;
+function hash160(const input: TBytes): TBytes;
+function hmac_sha512(const msg, key: TBytes): TBytes;
 
 implementation
 
 uses
   // Delphi
+  System.Classes,
+  System.Hash,
   System.JSON,
   System.Math,
   // HashLib4Pascal
+  HlpIHash,
+  HlpIHashInfo,
   HlpSHA3,
+  // CryptoLib4Pascal
+  ClpDigestUtilities,
+  ClpHMac,
+  ClpKeyParameter,
   // web3
   web3.json;
 
@@ -263,15 +275,48 @@ begin
   end;
 end;
 
-procedure sha3(client: IWeb3; const hex: string; callback: TAsyncString);
+procedure sha3(client: IWeb3; const hex: string; callback: TProc<string, IError>);
 begin
-  client.Call('web3_sha3', [hex], procedure(resp: TJsonObject; err: IError)
+  client.Call('web3_sha3', [hex], procedure(response: TJsonObject; err: IError)
   begin
     if Assigned(err) then
       callback('', err)
     else
-      callback(web3.json.getPropAsStr(resp, 'result'), nil);
+      callback(web3.json.getPropAsStr(response, 'result'), nil);
   end);
+end;
+
+function sha256(const input: TBytes): TBytes;
+begin
+  const stream = TBytesStream.Create;
+  try
+    stream.Write(input, Length(input));
+    stream.Position := 0;
+    Result := THashSHA2.GetHashBytes(stream, THashSHA2.TSHA2Version.SHA256);
+  finally
+    stream.Free;
+  end;
+end;
+
+function hash160(const input: TBytes): TBytes;
+begin
+  Result := sha256(input);
+  const digest = TDigestUtilities.GetDigest('RIPEMD160');
+  digest.BlockUpdate(Result, 0, System.Length(Result));
+  Result := TDigestUtilities.DoFinal(digest);
+end;
+
+function hmac_sha512(const msg, key: TBytes): TBytes;
+begin
+  const hmac = THMac.Create(TDigestUtilities.GetDigest('SHA-512'));
+  try
+    hmac.Init(TKeyParameter.Create(key));
+    hmac.BlockUpdate(msg, 0, System.Length(msg));
+    System.SetLength(Result, hmac.GetMacSize());
+    hmac.DoFinal(Result, 0);
+  finally
+    hmac.Free;
+  end;
 end;
 
 end.

@@ -42,8 +42,8 @@ uses
   web3.sync;
 
 type
-  TCallbacks     = TCriticalDictionary<Int64, TAsyncJsonObject>;
-  TSubscriptions = TCriticalDictionary<string, TAsyncJsonObject>;
+  TCallbacks     = TCriticalDictionary<Int64, TProc<TJsonObject, IError>>;
+  TSubscriptions = TCriticalDictionary<string, TProc<TJsonObject, IError>>;
 
   TJsonRpcSgcWebSocket = class(TJsonRpcWebSocket)
   strict private
@@ -68,14 +68,14 @@ type
       const URL   : string;
       security    : TSecurity;
       const method: string;
-      args        : array of const): TJsonObject; overload; override;
+      args        : array of const): IResult<TJsonObject>; overload; override;
     procedure Call(
       const URL   : string;
       security    : TSecurity;
       const method: string;
       args        : array of const;
-      callback    : TAsyncJsonObject); overload; override;
-    procedure Subscribe(const subscription: string; callback: TAsyncJsonObject); override;
+      callback    : TProc<TJsonObject, IError>); overload; override;
+    procedure Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>); override;
     procedure Unsubscribe(const subscription: string); override;
     procedure Disconnect; override;
   end;
@@ -171,7 +171,7 @@ begin
   if not Result then
     EXIT;
 
-  var callback: TAsyncJsonObject;
+  var callback: TProc<TJsonObject, IError>;
   try
     // did we receive an error?
     const error = web3.json.getPropAsObj(response, 'error');
@@ -230,7 +230,7 @@ begin
     EXIT;
   end;
 
-  var callback: TAsyncJsonObject;
+  var callback: TProc<TJsonObject, IError>;
   try
     Callbacks.Enter;
     try
@@ -277,23 +277,25 @@ function TJsonRpcSgcWebSocket.Call(
   const URL   : string;
   security    : TSecurity;
   const method: string;
-  args        : array of const): TJsonObject;
+  args        : array of const): IResult<TJsonObject>;
 begin
-  Result := nil;
-  const resp = web3.json.unmarshal(Client[URL, security].WriteAndWaitData(CreatePayload(method, args)));
-  if Assigned(resp) then
+  const response = web3.json.unmarshal(Client[URL, security].WriteAndWaitData(CreatePayload(method, args)));
+  if Assigned(response) then
   try
-    // did we receive an error? then translate that into an exception
-    const error = web3.json.getPropAsObj(resp, 'error');
+    // did we receive an error? then translate that into an IError
+    const error = web3.json.getPropAsObj(response, 'error');
     if Assigned(error) then
-      raise EJsonRpc.Create(
+      Result := TResult<TJsonObject>.Err(nil, TJsonRpcError.Create(
         web3.json.getPropAsInt(error, 'code'),
         web3.json.getPropAsStr(error, 'message')
-      );
-    Result := resp.Clone as TJsonObject;
+      ))
+    else
+      Result := TResult<TJsonObject>.Ok(response.Clone as TJsonObject);
+    EXIT;
   finally
-    resp.Free;
+    response.Free;
   end;
+  Result := TResult<TJsonObject>.Err(nil, 'no response');
 end;
 
 procedure TJsonRpcSgcWebSocket.Call(
@@ -301,7 +303,7 @@ procedure TJsonRpcSgcWebSocket.Call(
   security    : TSecurity;
   const method: string;
   args        : array of const;
-  callback    : TAsyncJsonObject);
+  callback    : TProc<TJsonObject, IError>);
 begin
   const payload = (function(args: array of const): string
   begin
@@ -322,7 +324,7 @@ begin
   Client[URL, security].WriteData(payload);
 end;
 
-procedure TJsonRpcSgcWebSocket.Subscribe(const subscription: string; callback: TAsyncJsonObject);
+procedure TJsonRpcSgcWebSocket.Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
 begin
   Subscriptions.Enter;
   try

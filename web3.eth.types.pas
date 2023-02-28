@@ -44,7 +44,6 @@ uses
 type
   TBytes32 = array[0..31] of Byte;
 
-type
   TArg = record
     Inner: TBytes32;
   public
@@ -60,18 +59,16 @@ type
     function toDateTime: TUnixDateTime;
   end;
 
-type
   PArg    = ^TArg;
   TTuple  = TArray<TArg>;
   TTopics = array[0..3] of TArg;
 
-type
   IBlock = interface
     function ToString: string;
     function baseFeePerGas: TWei;
   end;
 
-  ITxn = interface
+  ITransaction = interface
     function &type: Byte;
     function ToString: string;
     function blockNumber: BigInteger;    // block number where this transaction was in. null when its pending.
@@ -85,7 +82,6 @@ type
     function value: TWei;                // value transferred in Wei.
   end;
 
-type
   ITxReceipt = interface
     function ToString: string;
     function txHash: TTxHash;         // hash of the transaction.
@@ -96,42 +92,26 @@ type
     function effectiveGasPrice: TWei; // eip-1559-only
   end;
 
-type
-  TAsyncString    = reference to procedure(const str: string; err : IError);
-  TAsyncQuantity  = reference to procedure(qty  : BigInteger; err : IError);
-  TAsyncBoolean   = reference to procedure(bool : Boolean;    err : IError);
-  TAsyncAddress   = reference to procedure(addr : TAddress;   err : IError);
-  TAsyncBytes32   = reference to procedure(bytes: TBytes32;   err : IError);
-  TAsyncArg       = reference to procedure(arg  : TArg;       next: TProc);
-  TAsyncTuple     = reference to procedure(tup  : TTuple;     err : IError);
-  TAsyncTxHash    = reference to procedure(hash : TTxHash;    err : IError);
-  TAsyncBlock     = reference to procedure(block: IBlock;     err : IError);
-  TAsyncTxn       = reference to procedure(txn  : ITxn;       err : IError);
-  TAsyncReceipt   = reference to procedure(rcpt : ITxReceipt; err : IError);
-  TAsyncReceiptEx = reference to procedure(rcpt : ITxReceipt; qty : BigInteger; err: IError);
-  TAsyncFloat     = TProc<Double, IError>; // reference to procedure(value: Double;     err : IError);
-
-type
   TAddressHelper = record helper for TAddress
-    class function  New(arg: TArg): TAddress; overload; static;
-    class function  New(const hex: string): TAddress; overload; static;
-    class procedure New(client: IWeb3; const name: string; callback: TAsyncAddress); overload; static;
-    procedure ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean = False);
+    constructor Create(arg: TArg); overload;
+    constructor Create(const hex: string); overload;
+    class procedure Create(client: IWeb3; const name: string; callback: TProc<TAddress, IError>); overload; static;
+    procedure ToString(client: IWeb3; callback: TProc<string, IError>; abbreviated: Boolean = False);
     function  ToChecksum: TAddress;
     function  Abbreviated: string;
+    procedure IsEOA(client: IWeb3; callback: TProc<Boolean, IError>);
     function  IsZero: Boolean;
     function  SameAs(const other: TAddress): Boolean;
   end;
 
-type
   TPrivateKeyHelper = record helper for TPrivateKey
     class function Generate: TPrivateKey; static;
-    class function New(params: IECPrivateKeyParameters): TPrivateKey; static;
+    constructor Create(params: IECPrivateKeyParameters);
+    class function Prompt(&public: TAddress): IResult<TPrivateKey>; static;
     function Parameters: IECPrivateKeyParameters;
-    procedure Address(callback: TAsyncAddress);
+    function GetAddress: IResult<TAddress>;
   end;
 
-type
   TTupleHelper = record helper for TTuple
     function Add: PArg;
     function Last: PArg;
@@ -141,24 +121,34 @@ type
     function ToString: string;
     function ToStrings: TStrings;
     class function From(const hex: string): TTuple;
-    procedure Enumerate(callback: TAsyncArg; done: TProc);
+    procedure Enumerate(callback: TProc<TArg, TProc>; done: TProc);
   end;
 
 implementation
 
 uses
+{$IFDEF FMX}
+  FMX.Dialogs,
+{$ELSE}
+  VCL.Dialogs,
+{$ENDIF}
   // web3
+  web3.bip39,
+  web3.bip44,
   web3.crypto,
+  web3.error,
   web3.eth,
+  web3.eth.crypto,
   web3.eth.ens,
   web3.http,
+  web3.json,
   web3.utils;
 
 { TArg }
 
 function TArg.toAddress: TAddress;
 begin
-  Result := TAddress.New(Self);
+  Result := TAddress.Create(Self);
 end;
 
 function TArg.toBytes32: TBytes32;
@@ -222,45 +212,45 @@ end;
 
 { TAddressHelper }
 
-class function TAddressHelper.New(arg: TArg): TAddress;
+constructor TAddressHelper.Create(arg: TArg);
 begin
-  Result := New(arg.toHex('0x'));
+  Self := TAddress.Create(arg.toHex('0x'));
 end;
 
-class function TAddressHelper.New(const hex: string): TAddress;
+constructor TAddressHelper.Create(const hex: string);
 begin
   if not web3.utils.isHex(hex) then
   begin
-    Result := EMPTY_ADDRESS;
+    Self := EMPTY_ADDRESS;
     EXIT;
   end;
   var buf := web3.utils.fromHex(hex);
   if Length(buf) = 20 then
-    Result := TAddress(hex)
+    Self := TAddress(hex).ToChecksum
   else
     if Length(buf) < 20 then
     begin
       repeat
         buf := [0] + buf;
       until Length(buf) = 20;
-      Result := TAddress(web3.utils.toHex(buf));
+      Self := TAddress(web3.utils.toHex(buf)).ToChecksum;
     end
     else
-      Result := TAddress(web3.utils.toHex(Copy(buf, Length(buf) - 20, 20)));
+      Self := TAddress(web3.utils.toHex(Copy(buf, Length(buf) - 20, 20))).ToChecksum;
 end;
 
-class procedure TAddressHelper.New(client: IWeb3; const name: string; callback: TAsyncAddress);
+class procedure TAddressHelper.Create(client: IWeb3; const name: string; callback: TProc<TAddress, IError>);
 begin
   if web3.utils.isHex(name) then
-    callback(New(name), nil)
+    callback(TAddress.Create(name), nil)
   else
     web3.eth.ens.addr(client, name, callback);
 end;
 
-procedure TAddressHelper.ToString(client: IWeb3; callback: TAsyncString; abbreviated: Boolean);
+procedure TAddressHelper.ToString(client: IWeb3; callback: TProc<string, IError>; abbreviated: Boolean);
 begin
   const addr: TAddress = Self;
-  web3.eth.ens.reverse(client, addr, procedure(const name: string; err: IError)
+  web3.eth.ens.reverse(client, addr, procedure(name: string; err: IError)
   begin
     if Assigned(err) then
     begin
@@ -310,6 +300,20 @@ begin
   Result := Copy(Result, System.Low(Result), 8);
 end;
 
+procedure TAddressHelper.IsEOA(client: IWeb3; callback: TProc<Boolean, IError>);
+begin
+  client.Call('eth_getCode', [Self.ToChecksum, BLOCK_LATEST], procedure(response: TJsonObject; err: IError)
+  begin
+    if not Assigned(response) then
+    begin
+      callback(True, err);
+      EXIT;
+    end;
+    const code = web3.json.getPropAsStr(response, 'result');
+    callback((code = '') or (code = '0x') or (code = '0x0'), err);
+  end);
+end;
+
 function TAddressHelper.IsZero: Boolean;
 begin
   Result := (Self = '')
@@ -327,12 +331,66 @@ end;
 
 class function TPrivateKeyHelper.Generate: TPrivateKey;
 begin
-  Result := New(web3.crypto.generatePrivateKey('ECDSA', SECP256K1));
+  Result := TPrivateKey.Create(web3.crypto.generatePrivateKey('ECDSA', SECP256K1));
 end;
 
-class function TPrivateKeyHelper.New(params: IECPrivateKeyParameters): TPrivateKey;
+constructor TPrivateKeyHelper.Create(params: IECPrivateKeyParameters);
 begin
-  Result := TPrivateKey(web3.utils.toHex('', params.D.ToByteArrayUnsigned));
+  Self := TPrivateKey(web3.utils.toHex('', params.D.ToByteArrayUnsigned));
+end;
+
+class function TPrivateKeyHelper.Prompt(&public: TAddress): IResult<TPrivateKey>;
+begin
+  var input: string;
+  TThread.Synchronize(nil, procedure
+  begin
+{$WARN SYMBOL_DEPRECATED OFF}
+    input := Trim(InputBox(string(&public), 'Please paste your private key or your secret recovery phrase', ''));
+{$WARN SYMBOL_DEPRECATED DEFAULT}
+  end);
+
+  if input = '' then
+  begin
+    Result := TResult<TPrivateKey>.Err('', TCancelled.Create);
+    EXIT;
+  end;
+
+  var &private: TPrivateKey;
+  if web3.utils.isHex('', input) then
+  begin
+    if Length(input) <> SizeOf(TPrivateKey) - 1 then
+    begin
+      Result := TResult<TPrivateKey>.Err('', 'Private key is invalid');
+      EXIT;
+    end;
+    &private := TPrivateKey(input);
+  end else
+  begin
+    Result := web3.bip44.wallet(&public, web3.bip39.seed(input, ''));
+    if Result.isErr or (Result.Value = '') then
+    begin
+      Result := TResult<TPrivateKey>.Err('', 'Secret recovery phrase is invalid');
+      EXIT;
+    end;
+    &private := Result.Value;
+  end;
+
+  const address = &private.GetAddress;
+  if address.isErr then
+  begin
+    Result := TResult<TPrivateKey>.Err('', address.Error);
+    EXIT;
+  end;
+  if address.Value.ToChecksum <> &public.ToChecksum then
+  begin
+    if web3.utils.isHex('', input) then
+      Result := TResult<TPrivateKey>.Err('', 'Private key is invalid')
+    else
+      Result := TResult<TPrivateKey>.Err('', 'Secret recovery phrase is invalid');
+    EXIT;
+  end;
+
+  Result := TResult<TPrivateKey>.Ok(&private);
 end;
 
 function TPrivateKeyHelper.Parameters: IECPrivateKeyParameters;
@@ -340,15 +398,13 @@ begin
   Result := web3.crypto.privateKeyFromByteArray('ECDSA', SECP256K1, fromHex(string(Self)));
 end;
 
-procedure TPrivateKeyHelper.Address(callback: TAsyncAddress);
+function TPrivateKeyHelper.GetAddress: IResult<TAddress>;
 begin
   try
     const pubKey = web3.crypto.publicKeyFromPrivateKey(Self.Parameters);
-    var buffer := web3.utils.sha3(pubKey);
-    Delete(buffer, 0, 12);
-    callback(TAddress.New(web3.utils.toHex(buffer)), nil);
+    Result := TResult<TAddress>.Ok(web3.eth.crypto.publicKeyToAddress(pubKey));
   except
-    callback(EMPTY_ADDRESS, TError.Create('Private key is invalid'));
+    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, 'Private key is invalid');
   end;
 end;
 
@@ -451,7 +507,7 @@ begin
   Result := tup;
 end;
 
-procedure TTupleHelper.Enumerate(callback: TAsyncArg; done: TProc);
+procedure TTupleHelper.Enumerate(callback: TProc<TArg, TProc>; done: TProc);
 begin
   var Next: TProc<Integer, TArray<TArg>>;
 

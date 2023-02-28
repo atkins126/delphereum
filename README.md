@@ -85,23 +85,23 @@ SimpleBaseLib4Pascal
 
 ### 2. Bankless
 
-Bankless is a DeFi desktop app with the highest possible yield on your stablecoin savings.
+[Bankless](https://github.com/svanas/bankless) is a DeFi desktop app with the highest possible yield on your stablecoin savings.
 
-Made with Delphi, Bankless is a small and simple dapp that makes it super easy to transfer your savings from one lending protocol to another with the click of one button.
+Made with Delphi, bankless is a small and simple dapp that makes it super easy to transfer your savings from one lending protocol to another with the click of one button.
 
-You can download Bankless [for Windows](https://www.dropbox.com/s/fgjl5zmfnuw7h0s/bankless.zip?dl=1) or [for macOS](https://apps.apple.com/us/app/id1521153171).
+You can download bankless for [Windows](https://github.com/svanas/bankless/releases/latest/download/Windows.zip) or [macOS](https://github.com/svanas/bankless/releases/latest/download/macOS.zip).
 
 ### 3. PubSub
 
-[PubSub](https://github.com/svanas/PubSub) is a simple "Hello World" example project, demonstrating how to subscribe to an Ethereum gateway and get notified every time a new block got mined.
+[PubSub](https://github.com/svanas/PubSub) is a simple "Hello World" example project, demonstrating how to subscribe to an Ethereum node (or RPC provider) and get notified every time a new block got mined. You can download PubSub [for Windows](https://github.com/svanas/PubSub/releases/latest/download/Windows.zip).
 
-### 4. NFT
+### 4. Enumerable
 
-[NFT](https://github.com/svanas/NFT) is another "Hello World" example project, demonstrating how to enumerate over the NFTs in a token contract and display the associated image for each and every one of them.
+[Enumerable](https://github.com/svanas/Enumerable) is another "Hello World" example project, demonstrating how to enumerate over the NFTs in an ERC-721 contract and display the associated image for each and every one of them.
 
 ## License
 
-Distributed under the [GNU AGP v3.0 with Commons Clause](https://github.com/svanas/delphereum/blob/master/LICENSE) license.
+Distributed under the [GNU AGP v3.0](https://github.com/svanas/delphereum/blob/master/LICENSE) with [Commons Clause](https://commonsclause.com/) license.
 
 ## Sponsors
 

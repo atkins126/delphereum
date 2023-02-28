@@ -98,7 +98,7 @@ type
       swap    : ISingleSwap;
       limit   : BigInteger;
       deadline: BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
     procedure BatchSwap(
       owner   : TPrivateKey;
       kind    : TSwapKind;
@@ -106,18 +106,18 @@ type
       assets  : TArray<TAddress>;
       limits  : TArray<BigInteger>;
       deadline: BigInteger;
-      callback: TAsyncReceipt);
+      callback: TProc<ITxReceipt, IError>);
     procedure QueryBatchSwap(
       owner   : TAddress;
       kind    : TSwapKind;
       swaps   : TArray<ISwapStep>;
       assets  : TArray<TAddress>;
       callback: TProc<TArray<BigInteger>, IError>);
-    procedure WETH(callback: TAsyncAddress);
+    procedure WETH(callback: TProc<TAddress, IError>);
   end;
 
 // get the Balancer token list
-procedure tokens(chain: TChain; callback: TAsyncTokens);
+procedure tokens(chain: TChain; callback: TProc<TTokens, IError>);
 
 // easy access function: simulate a trade between two tokens, returning Vault asset deltas.
 procedure simulate(
@@ -139,14 +139,12 @@ procedure swap(
   amount  : BigInteger;  // the amount of tokens we (a) are sending to the pool, or (b) want to receive from the pool
   limit   : BigInteger;  // the "other amount" aka (a) minimum amount of tokens to receive, or (b) maximum amount of tokens to send
   deadline: BigInteger;  // your transaction will revert if it is still pending after this Unix epoch
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 
 // easy access function: listen for swaps between two tokens.
 function listen(client: IWeb3; callback: TOnSwap): ILogger;
 
 implementation
-
-{$R 'web3.eth.balancer.v2.tokenlist.goerli.res'}
 
 uses
   // Delphi
@@ -286,32 +284,32 @@ procedure TVault.Swap(
   swap    : ISingleSwap;
   limit   : BigInteger;
   deadline: BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
-  owner.Address(procedure(addr: TAddress; err: IError)
-  begin
-    if Assigned(err) then
+  owner.GetAddress
+    .ifErr(procedure(err: IError)
     begin
-      callback(nil, err);
-      EXIT;
-    end;
-    const funds: IContractStruct = TFundManagement.Create;
-    with funds as TFundManagement do
+      callback(nil, err)
+    end)
+    .&else(procedure(address: TAddress)
     begin
-      Sender    := addr.ToChecksum;
-      Recipient := addr.ToChecksum;
-    end;
-    web3.eth.write(Client, owner, Contract,
-      'swap(' +
-        '(bytes32,uint8,address,address,uint256,bytes),' + // SingleSwap
-        '(address,bool,address,bool),' +                   // FundManagement
-        'uint256,' +                                       // limit
-        'uint256' +                                        // deadline
-      ')',
-      [swap, funds, web3.utils.toHex(limit), web3.utils.toHex(deadline)],
-      callback
-    );
-  end);
+      const funds: IContractStruct = TFundManagement.Create;
+      with funds as TFundManagement do
+      begin
+        Sender    := address.ToChecksum;
+        Recipient := address.ToChecksum;
+      end;
+      web3.eth.write(Client, owner, Contract,
+        'swap(' +
+          '(bytes32,uint8,address,address,uint256,bytes),' + // SingleSwap
+          '(address,bool,address,bool),' +                   // FundManagement
+          'uint256,' +                                       // limit
+          'uint256' +                                        // deadline
+        ')',
+        [swap, funds, web3.utils.toHex(limit), web3.utils.toHex(deadline)],
+        callback
+      );
+    end);
 end;
 
 procedure TVault.BatchSwap(
@@ -321,47 +319,47 @@ procedure TVault.BatchSwap(
   assets  : TArray<TAddress>;
   limits  : TArray<BigInteger>;
   deadline: BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
-  owner.Address(procedure(addr: TAddress; err: IError)
-  begin
-    if Assigned(err) then
+  owner.GetAddress
+    .ifErr(procedure(err: IError)
     begin
-      callback(nil, err);
-      EXIT;
-    end;
-    const funds: IContractStruct = TFundManagement.Create;
-    with funds as TFundManagement do
+      callback(nil, err)
+    end)
+    .&else(procedure(address: TAddress)
     begin
-      Sender    := addr.ToChecksum;
-      Recipient := addr.ToChecksum;
-    end;
-    web3.eth.write(Client, owner, Contract,
-      'batchSwap(' +
-        'uint8,' +                                     // kind
-        '(bytes32,uint256,uint256,uint256,bytes)[],' + // SwapSteps
-        'address[],' +                                 // assets
-        '(address,bool,address,bool),' +               // FundManagement
-        'int256[],' +                                  // limits
-        'uint256' +                                    // deadline
-      ')',
-      [
-        Ord(kind),
-        (
-          function: TContractArray
-          begin
-            Result := TContractArray.Create;
-            for var swap in swaps do Result.Add(swap);
-          end
-        )(),
-        &array(assets),
-        funds,
-        &array(limits),
-        web3.utils.toHex(deadline)
-      ],
-      callback
-    );
-  end);
+      const funds: IContractStruct = TFundManagement.Create;
+      with funds as TFundManagement do
+      begin
+        Sender    := address.ToChecksum;
+        Recipient := address.ToChecksum;
+      end;
+      web3.eth.write(Client, owner, Contract,
+        'batchSwap(' +
+          'uint8,' +                                     // kind
+          '(bytes32,uint256,uint256,uint256,bytes)[],' + // SwapSteps
+          'address[],' +                                 // assets
+          '(address,bool,address,bool),' +               // FundManagement
+          'int256[],' +                                  // limits
+          'uint256' +                                    // deadline
+        ')',
+        [
+          Ord(kind),
+          (
+            function: TContractArray
+            begin
+              Result := TContractArray.Create;
+              for var swap in swaps do Result.Add(swap);
+            end
+          )(),
+          &array(assets),
+          funds,
+          &array(limits),
+          web3.utils.toHex(deadline)
+        ],
+        callback
+      );
+    end);
 end;
 
 procedure TVault.QueryBatchSwap(
@@ -413,14 +411,14 @@ begin
   );
 end;
 
-procedure TVault.WETH(callback: TAsyncAddress);
+procedure TVault.WETH(callback: TProc<TAddress, IError>);
 begin
-  call(Client, Contract, 'WETH()', [], procedure(const hex: string; err: IError)
+  call(Client, Contract, 'WETH()', [], procedure(hex: string; err: IError)
   begin
     if Assigned(err) then
       callback(EMPTY_ADDRESS, err)
     else
-      callback(TAddress.New(hex), nil);
+      callback(TAddress.Create(hex), nil);
   end);
 end;
 
@@ -442,42 +440,38 @@ begin
   inherited Create('Pool does not exist');
 end;
 
-procedure getPoolId(chain: TChain; asset0, asset1: TAddress; callback: TAsyncString);
+procedure getPoolId(chain: TChain; asset0, asset1: TAddress; callback: TProc<string, IError>);
 const
   QUERY = '{"query":"{pools(where: {tokensList: [\"%s\", \"%s\"]}, orderBy: totalLiquidity, orderDirection: desc) { id }}"}';
-const
-  SUBGRAPH: array[TChain] of string = (
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2',          // Ethereum,
-    '',                                                                           // Ropsten
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-rinkeby-v2',  // Rinkeby
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-kovan-v2',    // Kovan
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-goerli-v2',   // Goerli
-    '',                                                                           // Optimism
-    '',                                                                           // OptimismGoerli
-    '',                                                                           // RSK
-    '',                                                                           // RSK_test_net
-    '',                                                                           // BNB
-    '',                                                                           // BNB_test_net
-    '',                                                                           // Gnosis
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-polygon-v2',  // Polygon
-    '',                                                                           // PolygonMumbai
-    '',                                                                           // Fantom
-    '',                                                                           // Fantom_test_net
-    'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-arbitrum-v2', // Arbitrum
-    '',                                                                           // ArbitrumRinkeby
-    ''                                                                            // Sepolia
-  );
 begin
-  const execute = procedure(token0, token1: TAddress; callback: TAsyncString)
+  const execute = procedure(token0, token1: TAddress; callback: TProc<string, IError>)
   begin
-    web3.graph.execute(SUBGRAPH[chain], Format(QUERY, [string(token0), string(token1)]), procedure(resp: TJsonObject; err: IError)
+    const SUBGRAPH = (function(chain: TChain): IResult<string>
+    begin
+      if chain = Ethereum then
+        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2')
+      else if chain = Goerli then
+        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-goerli-v2')
+      else if chain = Polygon then
+        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-polygon-v2')
+      else if chain = Arbitrum then
+        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-arbitrum-v2')
+      else
+        Result := TResult<string>.Err('', TError.Create('%s not supported', [chain.Name]));
+    end)(chain);
+    if SUBGRAPH.isErr then
+    begin
+      callback('', SUBGRAPH.Error);
+      EXIT;
+    end;
+    web3.graph.execute(SUBGRAPH.Value, Format(QUERY, [string(token0), string(token1)]), procedure(response: TJsonObject; err: IError)
     begin
       if Assigned(err) then
       begin
         callback('', err);
         EXIT;
       end;
-      const data = web3.json.getPropAsObj(resp, 'data');
+      const data = web3.json.getPropAsObj(response, 'data');
       if Assigned(data) then
       begin
         const pools = web3.json.getPropAsArr(data, 'pools');
@@ -490,7 +484,7 @@ begin
       callback('', TPoolDoesNotExist.Create);
     end);
   end;
-  execute(asset0, asset1, procedure(const id: string; err: IError)
+  execute(asset0, asset1, procedure(id: string; err: IError)
   begin
     if Assigned(err) and Supports(err, IPoolDoesNotExist) then
       execute(asset1, asset0, callback)
@@ -501,39 +495,17 @@ end;
 
 {------------------------ get the Balancer token list -------------------------}
 
-procedure tokens(chain: TChain; callback: TAsyncTokens);
+procedure tokens(chain: TChain; callback: TProc<TTokens, IError>);
 begin
-  case chain of
-    Goerli:
+  if (chain = Ethereum) or (chain = Goerli) then
+  begin
+    web3.eth.tokenlists.tokens((function: TURL
     begin
-      const tokens = (function: TTokens
-      begin
-        Result := [];
-        const RS = TResourceStream.Create(hInstance, 'BALANCER_V2_TOKENLIST_GOERLI', RT_RCDATA);
-        try
-          const buf = (function: TBytes
-          begin
-            SetLength(Result, RS.Size);
-            RS.Read(Result[0], RS.Size);
-          end)();
-          const arr = TJsonObject.ParseJsonValue(TEncoding.UTF8.GetString(buf)) as TJsonArray;
-          if Assigned(arr) then
-          try
-            for var token in arr do
-              Result := Result + [web3.eth.tokenlists.token(token as TJsonObject)];
-          finally
-            arr.Free;
-          end;
-        finally
-          RS.Free;
-        end;
-      end)();
-      callback(tokens, nil);
-    end;
-    Polygon, Arbitrum:
-      web3.eth.tokenlists.tokens(chain, callback);
-  else
-    web3.eth.tokenlists.tokens('https://raw.githubusercontent.com/balancer-labs/assets/master/generated/listed.tokenlist.json', procedure(tokens: TTokens; err: IError)
+      if chain = Goerli then
+        Result := 'https://raw.githubusercontent.com/svanas/delphereum/master/web3.eth.balancer.v2.tokenlist.goerli.json'
+      else
+        Result := 'https://raw.githubusercontent.com/balancer-labs/assets/master/generated/listed.tokenlist.json';
+    end)(), procedure(tokens: TTokens; err: IError)
     begin
       if Assigned(err) or not Assigned(tokens) then
       begin
@@ -548,12 +520,14 @@ begin
           Inc(I);
       callback(tokens, nil);
     end);
+    EXIT;
   end;
+  web3.eth.tokenlists.tokens(chain, callback);
 end;
 
 {---------- easy access function: returns the Vault's WETH instance -----------}
 
-procedure weth(client: IWeb3; callback: TAsyncAddress);
+procedure weth(client: IWeb3; callback: TProc<TAddress, IError>);
 begin
   const vault = TVault.Create(client);
   try
@@ -731,7 +705,7 @@ procedure getPools(
   callback: TProc<IPools, IError>);
 begin
   // step #1: get the pool id for a single swap
-  getPoolId(client.Chain, assetIn, assetOut, procedure(const poolId: string; err: IError)
+  getPoolId(client.Chain, assetIn, assetOut, procedure(poolId: string; err: IError)
   begin
     if not Assigned(err) then
       callback(TPools.Create([
@@ -748,12 +722,12 @@ begin
             callback(nil, TPoolDoesNotExist.Create)
           else
             // step #3: get the pool IDs for a batch swap
-            getPoolId(client.Chain, assetIn, weth, procedure(const pool1: string; err: IError)
+            getPoolId(client.Chain, assetIn, weth, procedure(pool1: string; err: IError)
             begin
               if Assigned(err) then
                 callback(nil, err)
               else
-                getPoolId(client.Chain, weth, assetOut, procedure(const pool2: string; err: IError)
+                getPoolId(client.Chain, weth, assetOut, procedure(pool2: string; err: IError)
                 begin
                   if Assigned(err) then
                     callback(nil, err)
@@ -814,7 +788,7 @@ procedure swap(
   amount  : BigInteger;
   limit   : BigInteger;
   deadline: BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
   // step #1: get the pool IDs for a trade
   getPools(client, assetIn, assetOut, procedure(pools: IPools; err: IError)
@@ -825,7 +799,7 @@ begin
       EXIT;
     end;
     // step #2: grant token spend allowance to the vault
-    TERC20.Create(client, assetIn).ApproveEx(owner, TVault.DeployedAt, web3.Infinite, procedure(rcpt: ITxReceipt; err: IError)
+    web3.eth.erc20.approve(web3.eth.erc20.Create(client, assetIn), owner, TVault.DeployedAt, web3.Infinite, procedure(rcpt: ITxReceipt; err: IError)
     begin
       if Assigned(err) then
       begin
@@ -885,16 +859,16 @@ end;
 
 function listen(client: IWeb3; callback: TOnSwap): ILogger;
 begin
-  Result := web3.eth.logs.get(client, TVault.DeployedAt, procedure(log: TLog)
+  Result := web3.eth.logs.get(client, TVault.DeployedAt, procedure(log: PLog; err: IError)
   begin
-    if Assigned(callback) then
-      if log.isEvent('Swap(bytes32,address,address,uint256,uint256)') then
-        callback(log.BlockNumber,        // blockNo
-                 log.Topic[1].toBytes32, // poolId
-                 log.Topic[2].toAddress, // tokenIn
-                 log.Topic[3].toAddress, // tokenOut
-                 log.Data[0].toUInt256,  // amountIn
-                 log.Data[1].toUInt256); // amountOut
+    if Assigned(log) and Assigned(callback) then
+      if log^.isEvent('Swap(bytes32,address,address,uint256,uint256)') then
+        callback(log^.BlockNumber,        // blockNo
+                 log^.Topic[1].toBytes32, // poolId
+                 log^.Topic[2].toAddress, // tokenIn
+                 log^.Topic[3].toAddress, // tokenOut
+                 log^.Data[0].toUInt256,  // amountIn
+                 log^.Data[1].toUInt256); // amountOut
   end);
 end;
 

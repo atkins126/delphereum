@@ -30,6 +30,7 @@ interface
 
 uses
   // Delphi
+  System.JSON,
   System.SysUtils,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
@@ -38,12 +39,12 @@ uses
 
 type
   INFT = interface
-    function ChainId : Integer;
-    function Address : TAddress;
-    function TokenId : BigInteger;
-    function Name    : string;
-    function ImageURL: string;
-    function Standard: TStandard;
+    function ChainId: Integer;
+    function Address: TAddress;
+    function TokenId: BigInteger;
+    function Name   : string;
+    function Image  : TURL;
+    function Asset  : TAssetType;
   end;
 
   TNFTs = TArray<INFT>;
@@ -53,17 +54,14 @@ type
     function Length: Integer;
   end;
 
-  TAsyncNFTs = reference to procedure(NFTs: TNFTs; err: IError);
-
-procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TAsyncJsonArray); overload;
-procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TAsyncNFTs); overload;
+procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TProc<TJsonArray, IError>); overload;
+procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TProc<TNFTs, IError>); overload;
 
 implementation
 
 uses
   // Delphi
   System.Generics.Collections,
-  System.JSON,
   System.Net.URLClient,
   // web3
   web3.eth.types,
@@ -73,21 +71,21 @@ uses
 {----------------------------------- TToken -----------------------------------}
 
 type
-  TNFT = class(TCustomDeserialized<TJsonObject>, INFT)
+  TNFT = class(TCustomDeserialized, INFT)
   private
-    FChainId : Integer;
-    FAddress : TAddress;
-    FTokenId : BigInteger;
-    FName    : string;
-    FImageURL: string;
-    FStandard: TStandard;
+    FChainId: Integer;
+    FAddress: TAddress;
+    FTokenId: BigInteger;
+    FName   : string;
+    FImage  : TURL;
+    FAsset  : TAssetType;
   public
-    function ChainId : Integer;
-    function Address : TAddress;
-    function TokenId : BigInteger;
-    function Name    : string;
-    function ImageURL: string;
-    function Standard: TStandard;
+    function ChainId: Integer;
+    function Address: TAddress;
+    function TokenId: BigInteger;
+    function Name   : string;
+    function Image  : string;
+    function Asset  : TAssetType;
     constructor Create(aChainId: Integer; aJsonValue: TJsonObject); reintroduce;
   end;
 
@@ -95,16 +93,16 @@ constructor TNFT.Create(aChainId: Integer; aJsonValue: TJsonObject);
 begin
   inherited Create(aJsonValue);
 
-  FChainId  := aChainId;
-  FTokenId  := getPropAsBigInt(aJsonValue, 'token_id');
-  FName     := getPropAsStr(aJsonValue, 'name');
-  FImageURL := getPropAsStr(aJsonValue, 'image_url');
+  FChainId := aChainId;
+  FTokenId := getPropAsBigInt(aJsonValue, 'token_id');
+  FName    := getPropAsStr(aJsonValue, 'name');
+  FImage   := getPropAsStr(aJsonValue, 'image_url');
 
   const contract = getPropAsObj(aJsonValue, 'asset_contract');
   if Assigned(contract) then
   begin
-    FAddress  := TAddress.New(getPropAsStr(contract, 'address'));
-    FStandard := TStandard.New(getPropAsStr(contract, 'schema_name'));
+    FAddress := TAddress.Create(getPropAsStr(contract, 'address'));
+    FAsset   := TAssetType.Create(getPropAsStr(contract, 'schema_name'));
   end;
 end;
 
@@ -128,14 +126,14 @@ begin
   Result := FTokenId;
 end;
 
-function TNFT.ImageURL: string;
+function TNFT.Image: TURL;
 begin
-  Result := FImageURL;
+  Result := FImage;
 end;
 
-function TNFT.Standard: TStandard;
+function TNFT.Asset: TAssetType;
 begin
-  Result := FStandard;
+  Result := FAsset;
 end;
 
 {------------------------------- TTokensHelper --------------------------------}
@@ -173,22 +171,39 @@ end;
 
 {------------------------------ public functions ------------------------------}
 
-function baseURL(chain: TChain): string;
+function baseURL(chain: TChain): IResult<string>;
 begin
-  if chain = Rinkeby then
-    Result := 'https://rinkeby-api.opensea.io/api/v1/'
+  if chain = Goerli then
+    Result := TResult<string>.Ok('https://testnets-api.opensea.io/api/v1/')
   else
-    Result := 'https://api.opensea.io/api/v1/'
+    if chain = Ethereum then
+      Result := TResult<string>.Ok('https://api.opensea.io/api/v1/')
+    else
+      Result := TResult<string>.Err('', TError.Create('%s not supported', [chain.Name]));
 end;
 
-procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TAsyncJsonArray); overload;
+procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TProc<TJsonArray, IError>); overload;
 begin
   var result := TJsonArray.Create;
 
+  const base = baseURL(chain);
+  if base.isErr then
+  begin
+    callback(result, base.Error);
+    EXIT;
+  end;
+
   var get: TProc<string, TJsonArray>;
+
   get := procedure(URL: string; result: TJsonArray)
   begin
-    web3.http.get(URL, [TNetHeader.Create('X-API-KEY', apiKey)], procedure(obj: TJsonObject; err: IError)
+    web3.http.get(URL, (function: TNetHeaders
+    begin
+      if chain = Ethereum then
+        Result := [TNetHeader.Create('X-API-KEY', apiKey)]
+      else
+        Result := []
+    end)(), procedure(obj: TJsonValue; err: IError)
     begin
       if Assigned(err) then
       begin
@@ -206,7 +221,7 @@ begin
         if next.StartsWith('http', True) then
           get(next, result)
         else
-          get(Format('%sassets?owner=%s&cursor=%s', [baseURL(chain), owner, next]), result);
+          get(Format('%sassets?owner=%s&cursor=%s', [base.Value, owner, next]), result);
         EXIT;
       end;
 
@@ -214,10 +229,10 @@ begin
     end);
   end;
 
-  get(baseURL(chain) + 'assets?owner=' + string(owner), result);
+  get(base.Value + 'assets?owner=' + string(owner), result);
 end;
 
-procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TAsyncNFTs);
+procedure NFTs(chain: TChain; const apiKey: string; owner: TAddress; callback: TProc<TNFTs, IError>);
 begin
   NFTs(chain, apiKey, owner, procedure(arr: TJsonArray; err: IError)
   begin
@@ -226,13 +241,13 @@ begin
       callback(nil, err);
       EXIT;
     end;
-    const result = (function: TNFTs
+    const output = (function: TNFTs
     begin
       SetLength(Result, arr.Count);
       for var I := 0 to Pred(arr.Count) do
         Result[I] := TNFT.Create(chain.Id, arr[I] as TJsonObject);
     end)();
-    callback(result, nil);
+    callback(output, nil);
   end);
 end;
 

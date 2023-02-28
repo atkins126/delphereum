@@ -29,23 +29,26 @@ unit web3.eth.defi;
 interface
 
 uses
+  // Delphi
+  System.SysUtils,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // web3
   web3,
   web3.eth.erc20,
+  web3.eth.etherscan,
   web3.eth.types;
 
 type
-  TReserve = (DAI, USDC, USDT, MUSD, TUSD);
+  TReserve = (DAI, USDC, USDT, TUSD, mUSD);
 
   TReserveHelper = record helper for TReserve
     function  Symbol  : string;
     function  Decimals: Double;
-    procedure Address(chain: TChain; callback: TAsyncAddress);
+    function  Address(chain: TChain): IResult<TAddress>;
     function  Scale(amount: Double): BigInteger;
     function  Unscale(amount: BigInteger): Double;
-    procedure BalanceOf(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
+    procedure BalanceOf(client: IWeb3; owner: TAddress; callback: TProc<BigInteger, IError>);
   end;
 
   TPeriod = (oneDay, threeDays, oneWeek, twoWeeks, oneMonth);
@@ -66,47 +69,47 @@ type
       reserve: TReserve): Boolean; virtual; abstract;
     // Returns the annual yield as a percentage with 4 decimals.
     class procedure APY(
-      client  : IWeb3;
-      reserve : TReserve;
-      period  : TPeriod;
-      callback: TAsyncFloat); virtual; abstract;
+      client   : IWeb3;
+      etherscan: IEtherscan;
+      reserve  : TReserve;
+      period   : TPeriod;
+      callback : TProc<Double, IError>); virtual; abstract;
     // Deposits an underlying asset into the lending pool.
     class procedure Deposit(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
-      callback: TAsyncReceipt); virtual; abstract;
+      callback: TProc<ITxReceipt, IError>); virtual; abstract;
     // Returns how much underlying assets you are entitled to.
     class procedure Balance(
       client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
-      callback: TAsyncQuantity); virtual; abstract;
+      callback: TProc<BigInteger, IError>); virtual; abstract;
     // Withdraws your underlying asset from the lending pool.
     class procedure Withdraw(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
-      callback: TAsyncReceiptEx); virtual; abstract;
+      callback: TProc<ITxReceipt, BigInteger, IError>); virtual; abstract;
     class procedure WithdrawEx(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
-      callback: TAsyncReceiptEx); virtual; abstract;
+      callback: TProc<ITxReceipt, BigInteger, IError>); virtual; abstract;
   end;
 
   TLendingProtocolClass = class of TLendingProtocol;
-  TAsyncLendingProtocol = reference to procedure(proto: TLendingProtocolClass; err: IError);
 
 implementation
 
 uses
   // Delphi
-  System.SysUtils,
   System.TypInfo,
   // web3
+  web3.error,
   web3.eth;
 
 { TPeriodHelper }
@@ -157,28 +160,21 @@ begin
     Result := 1e18;
 end;
 
-procedure TReserveHelper.Address(chain: TChain; callback: TAsyncAddress);
+function TReserveHelper.Address(chain: TChain): IResult<TAddress>;
 begin
-  if chain = Fantom then
+  if chain <> Ethereum then
   begin
-    case Self of
-      DAI : callback('0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E', nil);
-      USDC: callback('0x04068DA6C83AFCFA0e13ba15A6696662335D5B75', nil);
-      USDT: callback('0x049d68029688eAbF473097a2fC38ef61633A3C7A', nil);
-      TUSD: callback('0x9879abdea01a879644185341f7af7d8343556b7a', nil);
-    else
-      callback(EMPTY_ADDRESS, TSilent.Create('%s not implemented on %s', [Self.Symbol, chain.Name]));
-    end;
+    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, TSilent.Create('%s not implemented on %s', [Self.Symbol, chain.Name]));
     EXIT;
   end;
   case Self of
-    DAI : callback('0x6b175474e89094c44da98b954eedeac495271d0f', nil);
-    USDC: callback('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', nil);
-    USDT: callback('0xdac17f958d2ee523a2206206994597c13d831ec7', nil);
-    MUSD: callback('0xe2f2a5C287993345a840Db3B0845fbC70f5935a5', nil);
-    TUSD: callback('0x0000000000085d4780B73119b644AE5ecd22b376', nil);
+    DAI : Result := TResult<TAddress>.Ok('0x6b175474e89094c44da98b954eedeac495271d0f');
+    USDC: Result := TResult<TAddress>.Ok('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48');
+    USDT: Result := TResult<TAddress>.Ok('0xdac17f958d2ee523a2206206994597c13d831ec7');
+    TUSD: Result := TResult<TAddress>.Ok('0x0000000000085d4780B73119b644AE5ecd22b376');
+    mUSD: Result := TResult<TAddress>.Ok('0xe2f2a5C287993345a840Db3B0845fbC70f5935a5');
   else
-    callback(EMPTY_ADDRESS, TSilent.Create('%s not implemented', [Self.Symbol]));
+    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, TSilent.Create('%s not implemented', [Self.Symbol]));
   end;
 end;
 
@@ -192,25 +188,20 @@ begin
   Result := amount.AsDouble / Self.Decimals;
 end;
 
-procedure TReserveHelper.BalanceOf(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
+procedure TReserveHelper.BalanceOf(client: IWeb3; owner: TAddress; callback: TProc<BigInteger, IError>);
 begin
-  Self.Address(client.Chain, procedure(token: TAddress; err: IError)
-  begin
-    if Assigned(err) then
+  Self.Address(client.Chain)
+    .ifErr(procedure(err: IError)
     begin
       if Supports(err, ISilent) then
         callback(0, nil)
       else
         callback(0, err);
-      EXIT;
-    end;
-    const erc20 = TERC20.Create(client, token);
-    try
-      erc20.BalanceOf(owner, callback);
-    finally
-      erc20.Free;
-    end;
-  end);
+    end)
+    .&else(procedure(address: TAddress)
+    begin
+      web3.eth.erc20.create(client, address).BalanceOf(owner, callback)
+    end);
 end;
 
 end.

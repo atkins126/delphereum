@@ -29,11 +29,14 @@ unit web3.eth.yearn.finance.v3;
 interface
 
 uses
+  // Delphi
+  System.SysUtils,
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // web3
   web3,
   web3.eth.defi,
+  web3.eth.etherscan,
   web3.eth.types,
   web3.eth.yearn.finance;
 
@@ -45,32 +48,33 @@ type
       chain  : TChain;
       reserve: TReserve): Boolean; override;
     class procedure APY(
-      client  : IWeb3;
-      reserve : TReserve;
-      period  : TPeriod;
-      callback: TAsyncFloat); override;
+      client   : IWeb3;
+      etherscan: IEtherscan;
+      reserve  : TReserve;
+      period   : TPeriod;
+      callback : TProc<Double, IError>); override;
     class procedure Deposit(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
-      callback: TAsyncReceipt); override;
+      callback: TProc<ITxReceipt, IError>); override;
     class procedure Balance(
       client  : IWeb3;
       owner   : TAddress;
       reserve : TReserve;
-      callback: TAsyncQuantity); override;
+      callback: TProc<BigInteger, IError>); override;
     class procedure Withdraw(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
-      callback: TAsyncReceiptEx); override;
+      callback: TProc<ITxReceipt, BigInteger, IError>); override;
     class procedure WithdrawEx(
       client  : IWeb3;
       from    : TPrivateKey;
       reserve : TReserve;
       amount  : BigInteger;
-      callback: TAsyncReceiptEx); override;
+      callback: TProc<ITxReceipt, BigInteger, IError>); override;
   end;
 
 implementation
@@ -96,8 +100,8 @@ const
     TyDAIv3,  // DAI
     TyUSDCv3, // USDC
     TyUSDTv3, // USDT
-    nil,      // mUSD
-    nil       // TUSD
+    nil,      // TUSD
+    nil       // mUSD
   );
 
 { TyEarnV3 }
@@ -113,12 +117,13 @@ begin
 end;
 
 class procedure TyEarnV3.APY(
-  client  : IWeb3;
-  reserve : TReserve;
-  period  : TPeriod;
-  callback: TAsyncFloat);
+  client   : IWeb3;
+  etherscan: IEtherscan;
+  reserve  : TReserve;
+  period   : TPeriod;
+  callback : TProc<Double, IError>);
 begin
-  Self._APY(client, yTokenClass[reserve], period, callback);
+  Self.yAPY(client, etherscan, yTokenClass[reserve], period, callback);
 end;
 
 class procedure TyEarnV3.Deposit(
@@ -126,27 +131,27 @@ class procedure TyEarnV3.Deposit(
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
-  callback: TAsyncReceipt);
+  callback: TProc<ITxReceipt, IError>);
 begin
-  Self._Deposit(client, from, yTokenClass[reserve], amount, callback);
+  Self.yDeposit(client, from, yTokenClass[reserve], amount, callback);
 end;
 
 class procedure TyEarnV3.Balance(
   client  : IWeb3;
   owner   : TAddress;
   reserve : TReserve;
-  callback: TAsyncQuantity);
+  callback: TProc<BigInteger, IError>);
 begin
-  Self._Balance(client, owner, yTokenClass[reserve], callback);
+  Self.yBalance(client, owner, yTokenClass[reserve], callback);
 end;
 
 class procedure TyEarnV3.Withdraw(
   client  : IWeb3;
   from    : TPrivateKey;
   reserve : TReserve;
-  callback: TAsyncReceiptEx);
+  callback: TProc<ITxReceipt, BigInteger, IError>);
 begin
-  Self._Withdraw(client, from, yTokenClass[reserve], callback);
+  Self.yWithdraw(client, from, yTokenClass[reserve], callback);
 end;
 
 class procedure TyEarnV3.WithdrawEx(
@@ -154,9 +159,9 @@ class procedure TyEarnV3.WithdrawEx(
   from    : TPrivateKey;
   reserve : TReserve;
   amount  : BigInteger;
-  callback: TAsyncReceiptEx);
+  callback: TProc<ITxReceipt, BigInteger, IError>);
 begin
-  Self._WithdrawEx(client, from, yTokenClass[reserve], amount, callback);
+  Self.yWithdrawEx(client, from, yTokenClass[reserve], amount, callback);
 end;
 
 { TyDAIv3 }

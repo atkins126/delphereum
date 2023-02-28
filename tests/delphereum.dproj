@@ -147,21 +147,31 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="..\web3.bip32.pas"/>
+        <DCCReference Include="..\web3.bip32.tests.pas"/>
+        <DCCReference Include="..\web3.bip39.pas"/>
+        <DCCReference Include="..\web3.bip39.tests.pas"/>
+        <DCCReference Include="..\web3.bip44.pas"/>
         <DCCReference Include="..\web3.coincap.pas"/>
         <DCCReference Include="..\web3.crypto.pas"/>
         <DCCReference Include="..\web3.crypto.tests.pas"/>
+        <DCCReference Include="..\web3.defillama.pas"/>
+        <DCCReference Include="..\web3.error.pas"/>
         <DCCReference Include="..\web3.eth.aave.v1.pas"/>
         <DCCReference Include="..\web3.eth.aave.v2.pas"/>
         <DCCReference Include="..\web3.eth.abi.pas"/>
         <DCCReference Include="..\web3.eth.abi.tests.pas"/>
         <DCCReference Include="..\web3.eth.alchemy.pas"/>
+        <DCCReference Include="..\web3.eth.alchemy.api.pas"/>
         <DCCReference Include="..\web3.eth.balancer.v2.pas"/>
         <DCCReference Include="..\web3.eth.blocknative.mempool.pas"/>
         <DCCReference Include="..\web3.eth.blocknative.mempool.sgc.pas"/>
+        <DCCReference Include="..\web3.eth.breadcrumbs.pas"/>
         <DCCReference Include="..\web3.eth.chainlink.pas"/>
         <DCCReference Include="..\web3.eth.compound.pas"/>
         <DCCReference Include="..\web3.eth.contract.pas"/>
         <DCCReference Include="..\web3.eth.crypto.pas"/>
+        <DCCReference Include="..\web3.eth.crypto.tests.pas"/>
         <DCCReference Include="..\web3.eth.defi.pas"/>
         <DCCReference Include="..\web3.eth.dydx.pas"/>
         <DCCReference Include="..\web3.eth.ens.pas"/>
@@ -172,17 +182,16 @@
         <DCCReference Include="..\web3.eth.etherscan.pas"/>
         <DCCReference Include="..\web3.eth.fulcrum.pas"/>
         <DCCReference Include="..\web3.eth.gas.pas"/>
-        <DCCReference Include="..\web3.eth.gas.station.pas"/>
         <DCCReference Include="..\web3.eth.idle.finance.v4.pas"/>
         <DCCReference Include="..\web3.eth.infura.pas"/>
         <DCCReference Include="..\web3.eth.logs.pas"/>
         <DCCReference Include="..\web3.eth.mstable.save.v2.pas"/>
+        <DCCReference Include="..\web3.eth.nodelist.pas"/>
         <DCCReference Include="..\web3.eth.opensea.pas"/>
         <DCCReference Include="..\web3.eth.origin.dollar.pas"/>
         <DCCReference Include="..\web3.eth.pas"/>
+        <DCCReference Include="..\web3.eth.nonce.pas"/>
         <DCCReference Include="..\web3.eth.pubsub.pas"/>
-        <DCCReference Include="..\web3.eth.rari.capital.api.pas"/>
-        <DCCReference Include="..\web3.eth.rari.capital.v2.pas"/>
         <DCCReference Include="..\web3.eth.tokenlists.pas"/>
         <DCCReference Include="..\web3.eth.tx.pas"/>
         <DCCReference Include="..\web3.eth.tx.tests.pas"/>
@@ -198,7 +207,6 @@
         <DCCReference Include="..\web3.eth.yearn.vaults.v2.pas"/>
         <DCCReference Include="..\web3.graph.pas"/>
         <DCCReference Include="..\web3.http.pas"/>
-        <DCCReference Include="..\web3.http.throttler.pas"/>
         <DCCReference Include="..\web3.ipfs.pas"/>
         <DCCReference Include="..\web3.json.pas"/>
         <DCCReference Include="..\web3.json.rpc.https.pas"/>
@@ -252,6 +260,12 @@
                     </Platform>
                 </DeployFile>
                 <DeployFile LocalName="Win32\Debug\delphereum.exe" Configuration="Debug" Class="ProjectOutput"/>
+                <DeployFile LocalName="Win32\Debug\delphereum.exe" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Win32">
+                        <RemoteName>delphereum.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployClass Name="AdditionalDebugSymbols">
                     <Platform Name="iOSSimulator">
                         <Operation>1</Operation>

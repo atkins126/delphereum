@@ -2,7 +2,7 @@
 {                                                                              }
 {                                  Delphereum                                  }
 {                                                                              }
-{             Copyright(c) 2020 Stefan van As <svanas@runbox.com>              }
+{             Copyright(c) 2018 Stefan van As <svanas@runbox.com>              }
 {           Github Repository <https://github.com/svanas/delphereum>           }
 {                                                                              }
 {             Distributed under GNU AGPL v3.0 with Commons Clause              }
@@ -22,7 +22,7 @@
 {                                                                              }
 {******************************************************************************}
 
-unit web3.eth.rari.capital.api;
+unit web3.eth.nonce;
 
 {$I web3.inc}
 
@@ -30,79 +30,61 @@ interface
 
 uses
   // Delphi
-  System.Types,
+  System.SysUtils,
+  // Velthuis' BigNumbers
+  Velthuis.BigIntegers,
   // web3
   web3,
-  web3.http;
+  web3.eth,
+  web3.sync;
 
-type
-  IRariStats = interface
-    function StablePoolAPY: Double;
-    function EthPoolAPY   : Double;
-    function YieldPoolAPY : Double;
-    function DaiPoolAPY   : Double;
-  end;
-
-  TAsyncRariStats = reference to procedure(stats: IRariStats; err: IError);
-
-function stats(callback: TAsyncRariStats) : IAsyncResult; overload;
-function stats(callback: TAsyncJsonObject): IAsyncResult; overload;
+procedure get(
+  client  : IWeb3;
+  address : TAddress;
+  callback: TProc<BigInteger, IError>);
 
 implementation
 
-uses
-  // Delphi
-  System.JSON,
-  // web3
-  web3.json;
+var
+  _nonce: ICriticalBigInt;
 
-{--------------------------------- TRariStats ---------------------------------}
+function nonce: ICriticalBigInt;
+begin
+  if not Assigned(_nonce) then
+    _nonce := TCriticalBigInt.Create(-1);
+  Result := _nonce;
+end;
 
-type
-  TRariStats = class(TDeserialized<TJsonObject>, IRariStats)
-  public
-    function StablePoolAPY: Double;
-    function EthPoolAPY   : Double;
-    function YieldPoolAPY : Double;
-    function DaiPoolAPY   : Double;
+procedure get(
+  client  : IWeb3;
+  address : TAddress;
+  callback: TProc<BigInteger, IError>);
+begin
+  nonce.Enter;
+  try
+    if nonce.Get > -1 then
+    begin
+      callback(nonce.Inc, nil);
+      EXIT;
+    end;
+  finally
+    nonce.Leave;
   end;
-
-function TRariStats.StablePoolAPY: Double;
-begin
-  Result := getPropAsDouble(FJsonValue, 'stablePoolAPY');
-end;
-
-function TRariStats.EthPoolAPY: Double;
-begin
-  Result := getPropAsDouble(FJsonValue, 'ethPoolAPY');
-end;
-
-function TRariStats.YieldPoolAPY: Double;
-begin
-  Result := getPropAsDouble(FJsonValue, 'yieldPoolAPY');
-end;
-
-function TRariStats.DaiPoolAPY: Double;
-begin
-  Result := getPropAsDouble(FJsonValue, 'daiPoolAPY');
-end;
-
-{------------------------------ global functions ------------------------------}
-
-function stats(callback: TAsyncRariStats) : IAsyncResult;
-begin
-  Result := stats(procedure(obj: TJsonObject; err: IError)
+  web3.eth.getTransactionCount(client, address, procedure(cnt: BigInteger; err: IError)
   begin
     if Assigned(err) then
-      callback(nil, err)
-    else
-      callback(TRariStats.Create(obj), nil);
+    begin
+      callback(0, err);
+      EXIT;
+    end;
+    nonce.Enter;
+    try
+      nonce.Put(cnt);
+      callback(nonce.Get, nil);
+    finally
+      nonce.Leave;
+    end;
   end);
-end;
-
-function stats(callback: TAsyncJsonObject): IAsyncResult;
-begin
-  Result := web3.http.get('https://v2.rari.capital/api/stats', [], callback);
 end;
 
 end.

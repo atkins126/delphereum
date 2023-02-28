@@ -33,19 +33,21 @@ uses
   System.JSON,
   System.SysUtils,
   System.Types,
+  // Velthuis' BigNumbers
+  Velthuis.BigIntegers,
   // web3
   web3,
   web3.eth.types;
 
 type
   IToken = interface
-    function ChainId: Integer;
+    function ChainId: UInt32;
     function Address: TAddress;
     function Name: string;
     function Symbol: string;
     function Decimals: Integer;
-    function LogoURI: string;
-    procedure Balance(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
+    function Logo: TURL;
+    procedure Balance(client: IWeb3; owner: TAddress; callback: TProc<BigInteger, IError>);
   end;
 
   TTokens = TArray<IToken>;
@@ -56,16 +58,14 @@ type
     function Length: Integer;
   end;
 
-  TAsyncTokens = reference to procedure(tokens: TTokens; err: IError);
+function count(const source: string; callback: TProc<BigInteger, IError>): IAsyncResult; overload;
+function count(chain: TChain; callback: TProc<BigInteger, IError>): IAsyncResult; overload;
 
-function count(const source: string; callback: TAsyncQuantity): IAsyncResult; overload;
-function count(chain: TChain; callback: TAsyncQuantity): IAsyncResult; overload;
+function tokens(const source: string; callback: TProc<TJsonArray, IError>): IAsyncResult; overload;
+function tokens(const source: string; callback: TProc<TTokens, IError>): IAsyncResult; overload;
+function tokens(chain: TChain; callback: TProc<TTokens, IError>): IAsyncResult; overload;
 
-function tokens(const source: string; callback: TAsyncJsonArray): IAsyncResult; overload;
-function tokens(const source: string; callback: TAsyncTokens): IAsyncResult; overload;
-function tokens(chain: TChain; callback: TAsyncTokens): IAsyncResult; overload;
-
-function token(const aJsonObject: TJsonObject): IToken;
+function token(chain: TChain; const token: TAddress; callback: TProc<IToken, IError>): IAsyncResult;
 
 implementation
 
@@ -80,37 +80,37 @@ uses
 {----------------------------------- TToken -----------------------------------}
 
 type
-  TToken = class(TCustomDeserialized<TJsonObject>, IToken)
+  TToken = class(TCustomDeserialized, IToken)
   private
-    FChainId: Integer;
+    FChainId: UInt32;
     FAddress: TAddress;
     FName: string;
     FSymbol: string;
     FDecimals: Integer;
-    FLogoURI: string;
+    FLogo: TURL;
   public
-    function ChainId: Integer;
+    function ChainId: UInt32;
     function Address: TAddress;
     function Name: string;
     function Symbol: string;
     function Decimals: Integer;
-    function LogoURI: string;
-    procedure Balance(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
-    constructor Create(const aJsonValue: TJsonObject); override;
+    function Logo: TURL;
+    procedure Balance(client: IWeb3; owner: TAddress; callback: TProc<BigInteger, IError>);
+    constructor Create(const aJsonValue: TJsonValue); override;
   end;
 
-constructor TToken.Create(const aJsonValue: TJsonObject);
+constructor TToken.Create(const aJsonValue: TJsonValue);
 begin
   inherited Create(aJsonValue);
   FChainId := getPropAsInt(aJsonValue, 'chainId');
-  FAddress := TAddress.New(getPropAsStr(aJsonValue, 'address'));
+  FAddress := TAddress.Create(getPropAsStr(aJsonValue, 'address'));
   FName := getPropAsStr(aJsonValue, 'name');
   FSymbol := getPropAsStr(aJsonValue, 'symbol');
   FDecimals := getPropAsInt(aJsonValue, 'decimals');
-  FLogoURI := getPropAsStr(aJsonValue, 'logoURI');
+  FLogo := getPropAsStr(aJsonValue, 'logoURI');
 end;
 
-function TToken.ChainId: Integer;
+function TToken.ChainId: UInt32;
 begin
   Result := FChainId;
 end;
@@ -135,19 +135,14 @@ begin
   Result := FDecimals;
 end;
 
-function TToken.LogoURI: string;
+function TToken.Logo: TURL;
 begin
-  Result := FLogoURI;
+  Result := FLogo;
 end;
 
-procedure TToken.Balance(client: IWeb3; owner: TAddress; callback: TAsyncQuantity);
+procedure TToken.Balance(client: IWeb3; owner: TAddress; callback: TProc<BigInteger, IError>);
 begin
-  const erc20 = TERC20.Create(client, Self.Address);
-  try
-    erc20.BalanceOf(owner, callback);
-  finally
-    erc20.Free;
-  end;
+  web3.eth.erc20.create(client, Self.Address).BalanceOf(owner, callback);
 end;
 
 {------------------------------- TTokensHelper --------------------------------}
@@ -193,7 +188,7 @@ end;
 
 {------------------------------ public functions ------------------------------}
 
-function count(const source: string; callback: TAsyncQuantity): IAsyncResult;
+function count(const source: string; callback: TProc<BigInteger, IError>): IAsyncResult;
 begin
   Result := tokens(source, procedure(arr: TJsonArray; err: IError)
   begin
@@ -206,7 +201,7 @@ begin
   end);
 end;
 
-function count(chain: TChain; callback: TAsyncQuantity): IAsyncResult;
+function count(chain: TChain; callback: TProc<BigInteger, IError>): IAsyncResult;
 begin
   Result := tokens(chain, procedure(tokens: TTokens; err: IError)
   begin
@@ -214,15 +209,15 @@ begin
   end);
 end;
 
-function tokens(const source: string; callback: TAsyncJsonArray): IAsyncResult;
+function tokens(const source: string; callback: TProc<TJsonArray, IError>): IAsyncResult;
 begin
-  Result := web3.http.get(source, [], procedure(obj: TJsonObject; err: IError)
+  Result := web3.http.get(source, [], procedure(obj: TJsonValue; err: IError)
   begin
     callback(getPropAsArr(obj, 'tokens'), err);
   end);
 end;
 
-function tokens(const source: string; callback: TAsyncTokens): IAsyncResult;
+function tokens(const source: string; callback: TProc<TTokens, IError>): IAsyncResult;
 begin
   Result := tokens(source, procedure(arr: TJsonArray; err: IError)
   begin
@@ -241,52 +236,7 @@ begin
   end);
 end;
 
-function tokens(chain: TChain; callback: TAsyncTokens): IAsyncResult;
-const
-  TOKEN_LIST: array[TChain] of string = (
-    { Ethereum        } 'https://tokens.coingecko.com/uniswap/all.json',
-    { Ropsten         } 'https://raw.githubusercontent.com/euler-xyz/euler-tokenlist/master/euler-tokenlist-ropsten.json',
-    { Rinkeby         } '',
-    { Kovan           } '',
-    { Goerli          } '',
-    { Optimism        } 'https://static.optimism.io/optimism.tokenlist.json',
-    { OptimismGoerli  } '',
-    { RSK             } '',
-    { RSK_test_net    } '',
-    { BNB             } 'https://tokens.pancakeswap.finance/pancakeswap-extended.json',
-    { BNB_test_net    } '',
-    { Gnosis          } 'https://tokens.honeyswap.org',
-    { Polygon         } 'https://unpkg.com/quickswap-default-token-list@latest/build/quickswap-default.tokenlist.json',
-    { PolygonMumbai   } '',
-    { Fantom          } 'https://raw.githubusercontent.com/SpookySwap/spooky-info/master/src/constants/token/spookyswap.json',
-    { Fantom_test_net } '',
-    { Arbitrum        } 'https://bridge.arbitrum.io/token-list-42161.json',
-    { ArbitrumRinkeby } 'https://bridge.arbitrum.io/token-list-421611.json',
-    { Sepolia         } ''
-  );
-  TOKENS_RINKEBY: string =
-  '[{' +
-    '"chainId": 4,' +
-    '"address": "0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea",' +
-    '"name": "Compound DAI",' +
-    '"symbol": "DAI",' +
-    '"decimals": 18,' +
-    '"logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png"' +
-  '},{' +
-    '"chainId": 4,' +
-    '"address": "0x4dbcdf9b62e891a7cec5a2568c3f4faf9e8abe2b",' +
-    '"name": "Compound USDC",' +
-    '"symbol": "USDC",' +
-    '"decimals": 6,' +
-    '"logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png"' +
-  '},{' +
-    '"chainId": 4,' +
-    '"address": "0xd9ba894e0097f8cc2bbc9d24d308b98e36dc6d02",' +
-    '"name": "Compound USDT",' +
-    '"symbol": "USDT",' +
-    '"decimals": 18,' +
-    '"logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png"' +
-  '}]';
+function tokens(chain: TChain; callback: TProc<TTokens, IError>): IAsyncResult;
 begin
   // step #1: get the (multi-chain) Uniswap list
   Result := tokens('https://tokens.uniswap.org', procedure(tokens1: TTokens; err1: IError)
@@ -301,23 +251,12 @@ begin
       if token1.ChainId = chain.Id then
         result := result + [token1];
     // step #2: add tokens from a chain-specific token list (if any)
-    if TOKEN_LIST[chain] = '' then
+    if chain.TokenList = '' then
     begin
-      if chain = Rinkeby then
-      begin
-        const arr = TJsonObject.ParseJsonValue(TOKENS_RINKEBY) as TJsonArray;
-        if Assigned(arr) then
-        try
-          for var token2 in arr do
-            result := result + [TToken.Create(token2 as TJsonObject)];
-        finally
-          arr.Free;
-        end;
-      end;
       callback(result, nil);
       EXIT;
     end;
-    tokens(TOKEN_LIST[chain], procedure(tokens2: TTokens; err2: IError)
+    tokens(chain.TokenList, procedure(tokens2: TTokens; err2: IError)
     begin
       if Assigned(err2) or not Assigned(tokens2) then
       begin
@@ -332,9 +271,21 @@ begin
   end);
 end;
 
-function token(const aJsonObject: TJsonObject): IToken;
+function token(chain: TChain; const token: TAddress; callback: TProc<IToken, IError>): IAsyncResult;
 begin
-  Result := TToken.Create(aJsonObject);
+  Result := tokens(chain, procedure(tokens: TTokens; err: IError)
+  begin
+    if Assigned(err) then
+    begin
+      callback(nil, err);
+      EXIT;
+    end;
+    const I = tokens.IndexOf(token);
+    if I = -1 then
+      callback(nil, nil)
+    else
+      callback(tokens[I], nil);
+  end);
 end;
 
 end.
