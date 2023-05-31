@@ -50,7 +50,7 @@ type
     FClient        : TsgcWebSocketClient;
     FCallbacks     : TCallbacks;
     FSubscriptions : TSubscriptions;
-    function GetClient(const URL: string; Security: TSecurity): TsgcWebSocketClient;
+    function GetClient(const URL: string; const proxy: TProxy; const Security: TSecurity): TsgcWebSocketClient;
     function GetCallbacks: TCallbacks;
     function GetSubscriptions: TSubscriptions;
   strict protected
@@ -59,23 +59,25 @@ type
     procedure DoError(Conn: TsgcWsConnection; const Error: string);
     procedure DoException(Conn: TsgcWsConnection; E: Exception);
     procedure DoDisconnect(Conn: TsgcWsConnection; Code: Integer);
-    property Client[const URL: string; Security: TSecurity]: TsgcWebSocketClient read GetClient;
+    property Client[const URL: string; const proxy: TProxy; const Security: TSecurity]: TsgcWebSocketClient read GetClient;
     property Callbacks: TCallbacks read GetCallbacks;
     property Subscriptions: TSubscriptions read GetSubscriptions;
   public
     destructor Destroy; override;
     function Call(
-      const URL   : string;
-      security    : TSecurity;
-      const method: string;
-      args        : array of const): IResult<TJsonObject>; overload; override;
+      const URL     : string;
+      const proxy   : TProxy;
+      const security: TSecurity;
+      const method  : string;
+      const args    : array of const): IResult<TJsonObject>; overload; override;
     procedure Call(
-      const URL   : string;
-      security    : TSecurity;
-      const method: string;
-      args        : array of const;
-      callback    : TProc<TJsonObject, IError>); overload; override;
-    procedure Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>); override;
+      const URL     : string;
+      const proxy   : TProxy;
+      const security: TSecurity;
+      const method  : string;
+      const args    : array of const;
+      const callback: TProc<TJsonObject, IError>); overload; override;
+    procedure Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>); override;
     procedure Unsubscribe(const subscription: string); override;
     procedure Disconnect; override;
   end;
@@ -89,7 +91,7 @@ uses
 
 { TJsonRpcSgcWebSocket }
 
-function TJsonRpcSgcWebSocket.GetClient(const URL: string; Security: TSecurity): TsgcWebSocketClient;
+function TJsonRpcSgcWebSocket.GetClient(const URL: string; const proxy: TProxy; const Security: TSecurity): TsgcWebSocketClient;
 begin
   if not Assigned(FClient) then
   begin
@@ -104,6 +106,15 @@ begin
     FClient.HeartBeat.Enabled  := True;
     FClient.HeartBeat.Interval := 30; // seconds
     FClient.HeartBeat.Timeout  := 0;
+  end;
+
+  if proxy.Enabled <> FClient.Proxy.Enabled then
+  begin
+    FClient.Proxy.Host     := proxy.Host;
+    FClient.Proxy.Password := proxy.Password;
+    FClient.Proxy.Port     := proxy.Port;
+    FClient.Proxy.Username := proxy.Username;
+    FClient.Proxy.Enabled  := proxy.Enabled;
   end;
 
   if not URL.Contains(FClient.Host) then
@@ -274,12 +285,13 @@ begin
 end;
 
 function TJsonRpcSgcWebSocket.Call(
-  const URL   : string;
-  security    : TSecurity;
-  const method: string;
-  args        : array of const): IResult<TJsonObject>;
+  const URL     : string;
+  const proxy   : TProxy;
+  const security: TSecurity;
+  const method  : string;
+  const args    : array of const): IResult<TJsonObject>;
 begin
-  const response = web3.json.unmarshal(Client[URL, security].WriteAndWaitData(CreatePayload(method, args)));
+  const response = web3.json.unmarshal(Client[URL, proxy, security].WriteAndWaitData(CreatePayload(method, args)));
   if Assigned(response) then
   try
     // did we receive an error? then translate that into an IError
@@ -299,11 +311,12 @@ begin
 end;
 
 procedure TJsonRpcSgcWebSocket.Call(
-  const URL   : string;
-  security    : TSecurity;
-  const method: string;
-  args        : array of const;
-  callback    : TProc<TJsonObject, IError>);
+  const URL     : string;
+  const proxy   : TProxy;
+  const security: TSecurity;
+  const method  : string;
+  const args    : array of const;
+  const callback: TProc<TJsonObject, IError>);
 begin
   const payload = (function(args: array of const): string
   begin
@@ -321,10 +334,10 @@ begin
       Self.ID.Leave;
     end;
   end)(args);
-  Client[URL, security].WriteData(payload);
+  Client[URL, proxy, security].WriteData(payload);
 end;
 
-procedure TJsonRpcSgcWebSocket.Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
+procedure TJsonRpcSgcWebSocket.Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>);
 begin
   Subscriptions.Enter;
   try

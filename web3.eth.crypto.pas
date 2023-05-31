@@ -67,18 +67,18 @@ type
     class function Empty: TSignature; static;
   public
     function ToHex: string;
-    constructor Create(R, S, V: TBigInteger);
+    constructor Create(const R, S, V: TBigInteger);
     class function FromHex(const hex: string): IResult<TSignature>; static;
   end;
 
-function publicKeyToAddress(pubKey: IECPublicKeyParameters): TAddress;
-function sign(privateKey: TPrivateKey; const msg: string): TSignature;
-function ecrecover(const msg: string; signature: TSignature): IResult<TAddress>; overload;
-function ecrecover(const data: TBytes; signature: TSignature; getRecId: TGetRecId): IResult<TAddress>; overload;
+function publicKeyToAddress(const pubKey: IECPublicKeyParameters): TAddress;
+function sign(const privateKey: TPrivateKey; const msg: string): TSignature;
+function ecrecover(const msg: string; const signature: TSignature): IResult<TAddress>; overload;
+function ecrecover(const data: TBytes; const signature: TSignature; const getRecId: TGetRecId): IResult<TAddress>; overload;
 
 implementation
 
-function publicKeyToAddress(pubKey: IECPublicKeyParameters): TAddress;
+function publicKeyToAddress(const pubKey: IECPublicKeyParameters): TAddress;
 begin
   // take the keccak-256 hash of the public key
   var buffer := web3.utils.sha3(publicKeyToByteArray(pubKey));
@@ -93,17 +93,17 @@ function prefix(const msg: string): TBytes;
 begin
   Result := web3.utils.sha3(
     TEncoding.UTF8.GetBytes(
-      #25 + 'Ethereum Signed Message:' + #10 + IntToStr(Length(msg)) + msg
+      #25 + 'Ethereum Signed Message:' + #10 + IntToStr(TEncoding.UTF8.GetByteCount(msg)) + msg
     )
   );
 end;
 
 // sign message, output Ethereum-specific signature
-function sign(privateKey: TPrivateKey; const msg: string): TSignature;
+function sign(const privateKey: TPrivateKey; const msg: string): TSignature;
 begin
   const Signer = TEthereumSigner.Create;
   try
-    Signer.Init(True, privateKey.Parameters);
+    Signer.Init(True, privateKey);
     const Signature = Signer.GenerateSignature(prefix(msg));
     const v = Signature.rec.Add(TBigInteger.ValueOf(27));
     Result := TSignature.Create(Signature.r, Signature.s, v);
@@ -113,7 +113,7 @@ begin
 end;
 
 // recover signer from Ethereum signed message
-function ecrecover(const msg: string; signature: TSignature): IResult<TAddress>;
+function ecrecover(const msg: string; const signature: TSignature): IResult<TAddress>;
 begin
   Result := ecrecover(prefix(msg), signature, function(const V: TBigInteger): IResult<Int32>
   begin
@@ -135,7 +135,7 @@ begin
 end;
 
 // recover signer from Ethereum-specific signature
-function ecrecover(const data: TBytes; signature: TSignature; getRecId: TGetRecId): IResult<TAddress>;
+function ecrecover(const data: TBytes; const signature: TSignature; const getRecId: TGetRecId): IResult<TAddress>;
 
   function decompressKey(curve: IECCurve; xBN: TBigInteger; yBit: Boolean): IECPoint;
   begin
@@ -151,7 +151,7 @@ begin
   const recId = getRecId(signature.V);
   if recId.isErr then
   begin
-    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, recId.Error);
+    Result := TResult<TAddress>.Err(TAddress.Zero, recId.Error);
     EXIT;
   end;
 
@@ -162,14 +162,14 @@ begin
   const x = signature.R.Add(i.Multiply(n));
   if x.CompareTo(prime) >= 0 then
   begin
-    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, 'an unknown error occurred');
+    Result := TResult<TAddress>.Err(TAddress.Zero, 'an unknown error occurred');
     EXIT;
   end;
 
   const R = decompressKey(curve.Curve, x, (recId.Value and 1) = 1);
   if not R.Multiply(n).IsInfinity then
   begin
-    Result := TResult<TAddress>.Err(EMPTY_ADDRESS, 'an unknown error occurred');
+    Result := TResult<TAddress>.Err(TAddress.Zero, 'an unknown error occurred');
     EXIT;
   end;
 
@@ -202,7 +202,7 @@ end;
 
 { TSignature }
 
-constructor TSignature.Create(R, S, V: TBigInteger);
+constructor TSignature.Create(const R, S, V: TBigInteger);
 begin
   Self.R := R;
   Self.S := S;
@@ -235,7 +235,13 @@ end;
 
 function TSignature.ToHex: string;
 begin
-  Result := web3.utils.toHex(Self.R.ToByteArrayUnsigned + Self.S.ToByteArrayUnsigned + Self.V.ToByteArrayUnsigned);
+  var R := Self.R.ToByteArrayUnsigned;
+  while Length(R) < 32 do R := [0] + R;
+  var S := Self.S.ToByteArrayUnsigned;
+  while Length(S) < 32 do S := [0] + S;
+  var V := Self.V.ToByteArrayUnsigned;
+  if Length(V) < 1 then V := [0];
+  Result := web3.utils.toHex(R + S + V);
 end;
 
 end.

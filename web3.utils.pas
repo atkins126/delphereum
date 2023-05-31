@@ -34,39 +34,36 @@ uses
   // Velthuis' BigNumbers
   Velthuis.BigIntegers,
   // web3
-  web3,
-  web3.eth.types;
+  web3;
 
 type
   TToHex = set of (padToEven, zeroAs0x0, noPrefix);
 
 function toHex(const buf: TBytes): string; overload;
-function toHex(const bytes32: TBytes32): string; overload;
 function toHex(const prefix: string; const buf: TBytes): string; overload;
-function toHex(const buf: TBytes; offset, len: Integer): string; overload;
-function toHex(const prefix: string; const buf: TBytes; offset, len: Integer): string; overload;
+function toHex(const buf: TBytes; const offset, len: Integer): string; overload;
+function toHex(const prefix: string; const buf: TBytes; const offset, len: Integer): string; overload;
 
 function toHex(const str: string): string; overload;
 function toHex(const prefix, str: string): string; overload;
-function toHex(const str: string; offset, len: Integer): string; overload;
-function toHex(const prefix, str: string; offset, len: Integer): string; overload;
+function toHex(const str: string; const offset, len: Integer): string; overload;
+function toHex(const prefix, str: string; const offset, len: Integer): string; overload;
 
-function toHex(val: TVarRec): string; overload;
-function toHex(int: BigInteger; options: TToHex = []): string; overload;
-function toBin(int: BigInteger): string;
+function toHex(const val: TVarRec): string; overload;
+function toHex(const int: BigInteger; const options: TToHex = []): string; overload;
+function toBin(const int: BigInteger): string;
 
 function isHex(const str: string): Boolean; overload;
 function isHex(const prefix, str: string): Boolean; overload;
 
 function fromHex(hex: string): TBytes;
-function fromHex32(hex: string): TBytes32;
 
-function scale(amount: Double; decimals: Byte): BigInteger;
-function unscale(amount: BigInteger; decimals: Byte): Double;
+function scale(const amount: Double; const decimals: Byte): BigInteger;
+function unscale(const amount: BigInteger; const decimals: Byte): Double;
 
 function  sha3(const hex: string): TBytes; overload;
 function  sha3(const buf: TBytes): TBytes; overload;
-procedure sha3(client: IWeb3; const hex: string; callback: TProc<string, IError>); overload;
+procedure sha3(const client: IWeb3; const hex: string; const callback: TProc<string, IError>); overload;
 
 function sha256(const input: TBytes): TBytes;
 function hash160(const input: TBytes): TBytes;
@@ -86,6 +83,7 @@ uses
   HlpSHA3,
   // CryptoLib4Pascal
   ClpDigestUtilities,
+  ClpIDigest,
   ClpHMac,
   ClpKeyParameter,
   // web3
@@ -96,25 +94,17 @@ begin
   Result := toHex('0x', buf);
 end;
 
-function toHex(const bytes32: TBytes32): string;
-begin
-  var buf: TBytes;
-  SetLength(buf, 32);
-  Move(bytes32, buf[0], 32);
-  Result := toHex('0x', buf);
-end;
-
 function toHex(const prefix: string; const buf: TBytes): string;
 begin
   Result := toHex(prefix, buf, 0, Length(buf));
 end;
 
-function toHex(const buf: TBytes; offset, len: Integer): string;
+function toHex(const buf: TBytes; const offset, len: Integer): string;
 begin
   Result := toHex('0x', buf, offset, len);
 end;
 
-function toHex(const prefix: string; const buf: TBytes; offset, len: Integer): string;
+function toHex(const prefix: string; const buf: TBytes; const offset, len: Integer): string;
 const
   Digits = '0123456789ABCDEF';
 begin
@@ -143,17 +133,17 @@ begin
     Result := toHex(prefix, TEncoding.UTF8.GetBytes(str));
 end;
 
-function toHex(const str: string; offset, len: Integer): string;
+function toHex(const str: string; const offset, len: Integer): string;
 begin
   Result := toHex('0x', str, offset, len);
 end;
 
-function toHex(const prefix, str: string; offset, len: Integer): string;
+function toHex(const prefix, str: string; const offset, len: Integer): string;
 begin
   Result := toHex(TEncoding.UTF8.GetBytes(str), offset, len);
 end;
 
-function toHex(val: TVarRec): string;
+function toHex(const val: TVarRec): string;
 
   // if the length of the string is not even, then pad with a leading zero.
   function pad(const str: string): string;
@@ -182,7 +172,7 @@ begin
   end;
 end;
 
-function toHex(int: BigInteger; options: TToHex): string;
+function toHex(const int: BigInteger; const options: TToHex): string;
 begin
   if int.IsZero then
   begin
@@ -205,7 +195,7 @@ begin
     Result := '0x' + Result;
 end;
 
-function toBin(int: BigInteger): string;
+function toBin(const int: BigInteger): string;
 begin
   Result := '0b' + int.ToBinaryString;
 end;
@@ -243,19 +233,12 @@ begin
     Result[I - 1] := StrToInt('$' + Copy(hex, (I - 1) * 2 + 1, 2));
 end;
 
-function fromHex32(hex: string): TBytes32;
-begin
-  FillChar(Result, SizeOf(Result), 0);
-  var buf := fromHex(hex);
-  Move(buf[0], Result[0], Min(Length(buf), SizeOf(Result)));
-end;
-
-function scale(amount: Double; decimals: Byte): BigInteger;
+function scale(const amount: Double; const decimals: Byte): BigInteger;
 begin
   Result := BigInteger.Create(amount * Round(Power(10, decimals)));
 end;
 
-function unscale(amount: BigInteger; decimals: Byte): Double;
+function unscale(const amount: BigInteger; const decimals: Byte): Double;
 begin
   Result := amount.AsDouble / Round(Power(10, decimals));
 end;
@@ -275,7 +258,7 @@ begin
   end;
 end;
 
-procedure sha3(client: IWeb3; const hex: string; callback: TProc<string, IError>);
+procedure sha3(const client: IWeb3; const hex: string; const callback: TProc<string, IError>);
 begin
   client.Call('web3_sha3', [hex], procedure(response: TJsonObject; err: IError)
   begin

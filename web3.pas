@@ -38,7 +38,6 @@ uses
 type
   TURL          = string;
   TAddress      = string[42];
-  TPrivateKey   = string[64];
   TWei          = BigInteger;
   TTxHash       = string[66];
   TUnixDateTime = Int64;
@@ -47,149 +46,199 @@ type
   TAssetType    = (native, erc20, erc721, erc1155);
 
   TChain = record
-    Id           : UInt32; // https://chainlist.org
-    Name         : string;
-    Symbol       : string;
-    TxType       : Byte;   // https://eips.ethereum.org/EIPS/eip-2718 (0 = Legacy, 2 = EIP-1559)
-    RPC          : array[TTransport] of TURL;
-    BlockExplorer: TURL;
-    TokenList    : TURL;
+    Id       : UInt32;   // https://chainlist.org
+    Name     : string;
+    Symbol   : string;   // native token symbol
+    TxType   : Byte;     // https://eips.ethereum.org/EIPS/eip-2718 (0 = Legacy, 2 = EIP-1559)
+    RPC      : array[TTransport] of TURL;
+    Explorer : TURL;     // block explorer
+    Tokens   : TURL;     // Uniswap-compatible token list
+    Chainlink: TAddress; // address of chainlink's Symbol/USD price feed on this chain
     class operator Equal(const Left, Right: TChain): Boolean;
     class operator NotEqual(const Left, Right: TChain): Boolean;
-    function SetTxType(Value: Byte): TChain;
+    function SetTxType(const Value: Byte): TChain;
     function SetRPC(const URL: TURL): TChain; overload;
-    function SetRPC(transport: TTransport; const URL: TURL): TChain; overload;
+    function SetRPC(const transport: TTransport; const URL: TURL): TChain; overload;
   end;
   PChain = ^TChain;
 
 const
   Ethereum: TChain = (
-    Id           : 1;
-    Name         : 'Ethereum';
-    Symbol       : 'ETH';
-    TxType       : 2;
-    BlockExplorer: 'https://etherscan.io';
-    TokenList    : 'https://tokens.coingecko.com/uniswap/all.json'
+    Id       : 1;
+    Name     : 'Ethereum';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    Explorer : 'https://etherscan.io';
+    Tokens   : 'https://tokens.coingecko.com/uniswap/all.json';
+    Chainlink: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419'
+  );
+  Ganache: TChain = (
+    Id       : 1337;
+    Name     : 'Ganache';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('http://127.0.0.1:7545', '')
   );
   Goerli: TChain = (
-    Id           : 5;
-    Name         : 'Goerli';
-    Symbol       : 'ETH';
-    TxType       : 2;
-    BlockExplorer: 'https://goerli.etherscan.io';
-    TokenList    : 'https://raw.githubusercontent.com/svanas/delphereum/master/web3.eth.balancer.v2.tokenlist.goerli.json'
+    Id       : 5;
+    Name     : 'Goerli';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    Explorer : 'https://goerli.etherscan.io';
+    Tokens   : 'https://raw.githubusercontent.com/svanas/delphereum/master/web3.eth.balancer.v2.tokenlist.goerli.json';
+    Chainlink: '0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e'
   );
   Optimism: TChain = (
-    Id           : 10;
-    Name         : 'Optimism';
-    Symbol       : 'ETH';
-    TxType       : 2;
-    BlockExplorer: 'https://optimistic.etherscan.io';
-    TokenList    : 'https://static.optimism.io/optimism.tokenlist.json'
+    Id       : 10;
+    Name     : 'Optimism';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://mainnet.optimism.io', '');
+    Explorer : 'https://optimistic.etherscan.io';
+    Tokens   : 'https://static.optimism.io/optimism.tokenlist.json';
+    Chainlink: '0x13e3Ee699D1909E989722E753853AE30b17e08c5'
   );
   OptimismGoerli: TChain = (
-    Id           : 420;
-    Name         : 'Optimism Goerli';
-    Symbol       : 'ETH';
-    TxType       : 2;
-    BlockExplorer: 'https://goerli-optimistic.etherscan.io'
+    Id       : 420;
+    Name     : 'Optimism Goerli';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://goerli.optimism.io', '');
+    Explorer : 'https://goerli-optimistic.etherscan.io';
+    Chainlink: '0x57241A37733983F97C4Ab06448F244A1E0Ca0ba8'
   );
   RSK: TChain = (
-    Id           : 30;
-    Name         : 'RSK';
-    Symbol       : 'BTC';
-    TxType       : 0;
-    RPC          : ('https://public-node.rsk.co', '');
-    BlockExplorer: 'https://explorer.rsk.co'
+    Id       : 30;
+    Name     : 'RSK';
+    Symbol   : 'BTC';
+    TxType   : 0;
+    RPC      : ('https://public-node.rsk.co', '');
+    Explorer : 'https://explorer.rsk.co'
   );
   RSK_test_net: TChain = (
-    Id           : 31;
-    Name         : 'RSK testnet';
-    Symbol       : 'BTC';
-    TxType       : 0;
-    RPC          : ('https://public-node.testnet.rsk.co', '');
-    BlockExplorer: 'https://explorer.testnet.rsk.co'
+    Id       : 31;
+    Name     : 'RSK testnet';
+    Symbol   : 'BTC';
+    TxType   : 0;
+    RPC      : ('https://public-node.testnet.rsk.co', '');
+    Explorer : 'https://explorer.testnet.rsk.co'
   );
   BNB: TChain = (
-    Id           : 56;
-    Name         : 'BNB Chain';
-    Symbol       : 'BNB';
-    TxType       : 0;
-    RPC          : ('https://bsc-dataseed.binance.org', '');
-    BlockExplorer: 'https://bscscan.com';
-    TokenList    : 'https://tokens.pancakeswap.finance/pancakeswap-extended.json'
+    Id       : 56;
+    Name     : 'BNB Chain';
+    Symbol   : 'BNB';
+    TxType   : 0;
+    RPC      : ('https://bsc-dataseed.binance.org', '');
+    Explorer : 'https://bscscan.com';
+    Tokens   : 'https://tokens.pancakeswap.finance/pancakeswap-extended.json';
+    Chainlink: '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'
   );
   BNB_test_net   : TChain = (
-    Id           : 97;
-    Name         : 'BNB Chain testnet';
-    Symbol       : 'BNB';
-    TxType       : 0;
-    RPC          : ('https://data-seed-prebsc-1-s1.binance.org:8545', '');
-    BlockExplorer: 'https://testnet.bscscan.com';
+    Id       : 97;
+    Name     : 'BNB Chain testnet';
+    Symbol   : 'BNB';
+    TxType   : 0;
+    RPC      : ('https://data-seed-prebsc-1-s1.binance.org:8545', '');
+    Explorer : 'https://testnet.bscscan.com';
+    Chainlink: '0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526'
   );
   Gnosis: TChain = (
-    Id           : 100;
-    Name         : 'Gnosis Chain';
-    Symbol       : 'xDAI';
-    TxType       : 2;
-    RPC          : ('https://rpc.gnosischain.com', 'wss://rpc.gnosischain.com/wss');
-    BlockExplorer: 'https://gnosisscan.io/';
-    TokenList    : 'https://tokens.honeyswap.org'
+    Id       : 100;
+    Name     : 'Gnosis Chain';
+    Symbol   : 'xDAI';
+    TxType   : 2;
+    RPC      : ('https://rpc.gnosischain.com', 'wss://rpc.gnosischain.com/wss');
+    Explorer : 'https://gnosisscan.io/';
+    Tokens   : 'https://tokens.honeyswap.org';
+    Chainlink: '0x678df3415fc31947dA4324eC63212874be5a82f8'
   );
   Polygon: TChain = (
-    Id           : 137;
-    Name         : 'Polygon';
-    Symbol       : 'MATIC';
-    TxType       : 2;
-    BlockExplorer: 'https://polygonscan.com';
-    TokenList    : 'https://unpkg.com/quickswap-default-token-list@latest/build/quickswap-default.tokenlist.json'
+    Id       : 137;
+    Name     : 'Polygon';
+    Symbol   : 'MATIC';
+    TxType   : 2;
+    Explorer : 'https://polygonscan.com';
+    Tokens   : 'https://unpkg.com/quickswap-default-token-list@latest/build/quickswap-default.tokenlist.json';
+    Chainlink: '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0'
   );
   PolygonMumbai: TChain = (
-    Id           : 80001;
-    Name         : 'Polygon Mumbai';
-    Symbol       : 'MATIC';
-    TxType       : 2;
-    BlockExplorer: 'https://mumbai.polygonscan.com'
+    Id       : 80001;
+    Name     : 'Polygon Mumbai';
+    Symbol   : 'MATIC';
+    TxType   : 2;
+    Explorer : 'https://mumbai.polygonscan.com';
+    Chainlink: '0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada'
   );
   Fantom: TChain = (
-    Id           : 250;
-    Name         : 'Fantom';
-    Symbol       : 'FTM';
-    TxType       : 0;
-    RPC          : ('https://rpc.fantom.network', '');
-    BlockExplorer: 'https://ftmscan.com';
-    TokenList    : 'https://raw.githubusercontent.com/SpookySwap/spooky-info/master/src/constants/token/spookyswap.json'
+    Id       : 250;
+    Name     : 'Fantom';
+    Symbol   : 'FTM';
+    TxType   : 0;
+    RPC      : ('https://rpc.fantom.network', '');
+    Explorer : 'https://ftmscan.com';
+    Tokens   : 'https://raw.githubusercontent.com/SpookySwap/spooky-info/master/src/constants/token/spookyswap.json';
+    Chainlink: '0xf4766552D15AE4d256Ad41B6cf2933482B0680dc'
   );
   Fantom_test_net: TChain = (
-    Id           : 4002;
-    Name         : 'Fantom testnet';
-    Symbol       : 'FTM';
-    TxType       : 0;
-    RPC          : ('https://rpc.testnet.fantom.network', '');
-    BlockExplorer: 'https://testnet.ftmscan.com';
+    Id       : 4002;
+    Name     : 'Fantom testnet';
+    Symbol   : 'FTM';
+    TxType   : 0;
+    RPC      : ('https://rpc.testnet.fantom.network', '');
+    Explorer : 'https://testnet.ftmscan.com';
+    Chainlink: '0xe04676B9A9A2973BCb0D1478b5E1E9098BBB7f3D'
   );
   Arbitrum: TChain = (
-    Id           : 42161;
-    Name         : 'Arbitrum';
-    Symbol       : 'ETH';
-    TxType       : 0;
-    BlockExplorer: 'https://explorer.arbitrum.io';
-    TokenList    : 'https://bridge.arbitrum.io/token-list-42161.json'
+    Id       : 42161;
+    Name     : 'Arbitrum';
+    Symbol   : 'ETH';
+    TxType   : 0;
+    RPC      : ('https://arb1.arbitrum.io/rpc', '');
+    Explorer : 'https://explorer.arbitrum.io';
+    Tokens   : 'https://bridge.arbitrum.io/token-list-42161.json';
+    Chainlink: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612'
   );
   ArbitrumGoerli: TChain = (
-    Id           : 421613;
-    Name         : 'Arbitrum Goerli';
-    Symbol       : 'ETH';
-    TxType       : 0;
-    BlockExplorer: 'https://goerli-rollup-explorer.arbitrum.io';
+    Id       : 421613;
+    Name     : 'Arbitrum Goerli';
+    Symbol   : 'ETH';
+    TxType   : 0;
+    RPC      : ('https://goerli-rollup.arbitrum.io/rpc', '');
+    Explorer : 'https://goerli-rollup-explorer.arbitrum.io';
+    Chainlink: '0x62CAe0FA2da220f43a51F86Db2EDb36DcA9A5A08'
   );
   Sepolia: TChain = (
-    Id           : 11155111;
-    Name         : 'Sepolia';
-    Symbol       : 'ETH';
-    TxType       : 2;
-    RPC          : ('https://rpc.sepolia.org', '');
-    BlockExplorer: 'https://sepolia.etherscan.io';
+    Id       : 11155111;
+    Name     : 'Sepolia';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://rpc.sepolia.org', '');
+    Explorer : 'https://sepolia.etherscan.io';
+    Chainlink: '0x694AA1769357215DE4FAC081bf1f309aDC325306'
+  );
+  Base: TChain = (
+    Id       : 8453;
+    Name     : 'Base';
+    Symbol   : 'ETH';
+    TxType   : 2
+  );
+  BaseGoerli: TChain = (
+    Id       : 84531;
+    Name     : 'Base Goerli';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://goerli.base.org', '');
+    Explorer : 'https://goerli.basescan.org';
+    Chainlink: '0xcD2A119bD1F7DF95d706DE6F2057fDD45A0503E2'
+  );
+  PulseChain: TChain = (
+    Id       : 369;
+    Name     : 'PulseChain';
+    Symbol   : 'PLS';
+    TxType   : 2;
+    RPC      : ('https://rpc.pulsechain.com', '');
+    Explorer : 'https://scan.pulsechain.com';
+    Tokens   : 'https://pulsechain-sacrifice-checker.vercel.app/tokens.json'
   );
 
 type
@@ -218,8 +267,6 @@ type
     function isErr: Boolean;
     function ifOk(const proc: TProc<T>): IResult<T>;
     function ifErr(const proc: TProc<IError>): IResult<T>;
-    function &and(const predicate: TFunc<T, Boolean>; const proc: TProc<T>): IResult<T>; overload;
-    function &and(const predicate: TFunc<IError, Boolean>; const proc: TProc<IError>): IResult<T>; overload;
     procedure &else(const proc: TProc<T>); overload;
     procedure &else(const proc: TProc<IError>); overload;
     procedure into(const callback: TProc<T, IError>);
@@ -230,17 +277,15 @@ type
     FValue: T;
     FError: IError;
   public
-    class function Ok(aValue: T): IResult<T>;
-    class function Err(aDefault: T; aError: IError): IResult<T>; overload;
-    class function Err(aDefault: T; aError: string): IResult<T>; overload;
+    class function Ok(const aValue: T): IResult<T>;
+    class function Err(const aDefault: T; const aError: IError): IResult<T>; overload;
+    class function Err(const aDefault: T; const aError: string): IResult<T>; overload;
     function Value: T;
     function Error: IError;
     function isOk: Boolean;
     function isErr: Boolean;
     function ifOk(const proc: TProc<T>): IResult<T>;
     function ifErr(const proc: TProc<IError>): IResult<T>;
-    function &and(const predicate: TFunc<T, Boolean>; const proc: TProc<T>): IResult<T>; overload;
-    function &and(const predicate: TFunc<IError, Boolean>; const proc: TProc<IError>): IResult<T>; overload;
     procedure &else(const proc: TProc<T>); overload;
     procedure &else(const proc: TProc<IError>); overload;
     procedure into(const callback: TProc<T, IError>);
@@ -253,50 +298,68 @@ type
     function Call(
       const URL   : string;
       const method: string;
-      args        : array of const): IResult<TJsonObject>; overload;
+      const args  : array of const): IResult<TJsonObject>; overload;
     procedure Call(
-      const URL   : string;
-      const method: string;
-      args        : array of const;
-      callback    : TProc<TJsonObject, IError>); overload;
+      const URL     : string;
+      const method  : string;
+      const args    : array of const;
+      const callback: TProc<TJsonObject, IError>); overload;
+  end;
+
+  TProxy = record
+    Enabled: Boolean;
+    Host: string;
+    Password: string;
+    Port: Integer;
+    Username: string;
+    class function Disabled: TProxy; static;
   end;
 
   IPubSub = interface
   ['{D63B43A1-60E4-4107-8B14-925399A4850A}']
     function Call(
-      const URL   : string;
-      security    : TSecurity;
-      const method: string;
-      args        : array of const): IResult<TJsonObject>; overload;
+      const URL     : string;
+      const proxy   : TProxy;
+      const security: TSecurity;
+      const method  : string;
+      const args    : array of const): IResult<TJsonObject>; overload;
     procedure Call(
-      const URL   : string;
-      security    : TSecurity;
-      const method: string;
-      args        : array of const;
-      callback    : TProc<TJsonObject, IError>); overload;
+      const URL     : string;
+      const proxy   : TProxy;
+      const security: TSecurity;
+      const method  : string;
+      const args    : array of const;
+      const callback: TProc<TJsonObject, IError>); overload;
 
-    procedure Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
+    procedure Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>);
     procedure Unsubscribe(const subscription: string);
     procedure Disconnect;
 
-    function OnError(callback: TProc<IError>): IPubSub;
-    function OnDisconnect(callback: TProc): IPubSub;
+    function OnError(const callback: TProc<IError>): IPubSub;
+    function OnDisconnect(const callback: TProc): IPubSub;
   end;
 
   TSignatureRequestResult = reference to procedure(approved: Boolean; err: IError);
-  TOnSignatureRequest     = reference to procedure(from, &to: TAddress; gasPrice: TWei;
-                            estimatedGas: BigInteger; callback: TSignatureRequestResult);
+  TOnSignatureRequest     = reference to procedure(
+                              const from, &to   : TAddress;
+                              const gasPrice    : TWei;
+                              const estimatedGas: BigInteger;
+                              const callback    : TSignatureRequestResult);
 
   IWeb3 = interface
   ['{D4C1A132-2296-40C0-B6FB-6B326EFB8A26}']
     function Chain: TChain;
-    procedure LatestPrice(callback: TProc<Double, IError>);
+    procedure LatestPrice(const callback: TProc<Double, IError>);
 
     function  GetCustomGasPrice: TWei;
-    procedure CanSignTransaction(from, &to: TAddress; gasPrice: TWei; estimatedGas: BigInteger; callback: TSignatureRequestResult);
+    procedure CanSignTransaction(
+      const from, &to   : TAddress;
+      const gasPrice    : TWei;
+      const estimatedGas: BigInteger;
+      const callback    : TSignatureRequestResult);
 
-    function  Call(const method: string; args: array of const): IResult<TJsonObject>; overload;
-    procedure Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>); overload;
+    function  Call(const method: string; const args: array of const): IResult<TJsonObject>; overload;
+    procedure Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>); overload;
   end;
 
   TCustomWeb3 = class abstract(TInterfacedObject, IWeb3)
@@ -306,13 +369,17 @@ type
     FOnSignatureRequest: TOnSignatureRequest;
   public
     function Chain: TChain;
-    procedure LatestPrice(callback: TProc<Double, IError>);
+    procedure LatestPrice(const callback: TProc<Double, IError>);
 
     function  GetCustomGasPrice: TWei;
-    procedure CanSignTransaction(from, &to: TAddress; gasPrice: TWei; estimatedGas: BigInteger; callback: TSignatureRequestResult);
+    procedure CanSignTransaction(
+      const from, &to   : TAddress;
+      const gasPrice    : TWei;
+      const estimatedGas: BigInteger;
+      const callback    : TSignatureRequestResult);
 
-    function  Call(const method: string; args: array of const): IResult<TJsonObject>; overload; virtual; abstract;
-    procedure Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>); overload; virtual; abstract;
+    function  Call(const method: string; const args: array of const): IResult<TJsonObject>; overload; virtual; abstract;
+    procedure Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>); overload; virtual; abstract;
 
     property OnCustomGasPrice  : TOnCustomGasPrice   read FOnCustomGasPrice   write FOnCustomGasPrice;
     property OnSignatureRequest: TOnSignatureRequest read FOnSignatureRequest write FOnSignatureRequest;
@@ -322,58 +389,55 @@ type
   private
     FProtocol: IJsonRpc;
   public
-    constructor Create(const aURL: string); overload;
-    constructor Create(const aURL: string; aTxType: Byte); overload;
-    constructor Create(aChain: TChain); overload;
-    constructor Create(aChain: TChain; aProtocol: IJsonRpc); overload;
+    constructor Create(const aURL: TURL); overload;
+    constructor Create(const aChain: TChain); overload;
+    constructor Create(const aChain: TChain; const aProtocol: IJsonRpc); overload;
 
-    function  Call(const method: string; args: array of const): IResult<TJsonObject>; overload; override;
-    procedure Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>); overload; override;
+    function  Call(const method: string; const args: array of const): IResult<TJsonObject>; overload; override;
+    procedure Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>); overload; override;
   end;
 
   IWeb3Ex = interface(IWeb3)
   ['{DD13EBE0-3E4E-49B8-A41D-B58C7DD0322F}']
-    procedure Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
+    procedure Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>);
     procedure Unsubscribe(const subscription: string);
     procedure Disconnect;
-    function OnError(callback: TProc<IError>): IWeb3Ex;
-    function OnDisconnect(callback: TProc): IWeb3Ex;
+    function OnError(const callback: TProc<IError>): IWeb3Ex;
+    function OnDisconnect(const callback: TProc): IWeb3Ex;
   end;
 
   TWeb3Ex = class(TCustomWeb3, IWeb3Ex)
   private
     FProtocol: IPubSub;
+    FProxy   : TProxy;
     FSecurity: TSecurity;
   public
     constructor Create(
-      const aURL: string;
-      aProtocol : IPubSub;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
+      const aURL     : TURL;
+      const aProtocol: IPubSub;
+      const aProxy   : TProxy;
+      const aSecurity: TSecurity = TSecurity.Automatic); overload;
     constructor Create(
-      const aURL: string;
-      aTxType   : Byte;
-      aProtocol : IPubSub;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
-    constructor Create(
-      aChain    : TChain;
-      aProtocol : IPubSub;
-      aSecurity : TSecurity = TSecurity.Automatic); overload;
+      const aChain   : TChain;
+      const aProtocol: IPubSub;
+      const aProxy   : TProxy;
+      const aSecurity: TSecurity = TSecurity.Automatic); overload;
 
-    function  Call(const method: string; args: array of const): IResult<TJsonObject>; overload; override;
-    procedure Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>); overload; override;
+    function  Call(const method: string; const args: array of const): IResult<TJsonObject>; overload; override;
+    procedure Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>); overload; override;
 
-    procedure Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
+    procedure Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>);
     procedure Unsubscribe(const subscription: string);
     procedure Disconnect;
 
-    function OnError(callback: TProc<IError>): IWeb3Ex;
-    function OnDisconnect(callback: TProc): IWeb3Ex;
+    function OnError(const callback: TProc<IError>): IWeb3Ex;
+    function OnDisconnect(const callback: TProc): IWeb3Ex;
   end;
 
 function Now: TUnixDateTime; inline;
 function Infinite: BigInteger; inline;
 function MaxInt256: BigInteger; inline;
-function Chain(Id: UInt32): IResult<PChain>; inline;
+function Chain(const Id: UInt32): IResult<PChain>; inline;
 
 implementation
 
@@ -408,7 +472,7 @@ begin
   Result := BigInteger.Create('57896044618658097711785492504343953926634992332820282019728792003956564819967');
 end;
 
-function Chain(Id: UInt32): IResult<PChain>;
+function Chain(const Id: UInt32): IResult<PChain>;
 begin
   if Id = Ethereum.Id then
     Result := TResult<PChain>.Ok(@Ethereum)
@@ -442,6 +506,12 @@ begin
     Result := TResult<PChain>.Ok(@ArbitrumGoerli)
   else if Id = Sepolia.Id then
     Result := TResult<PChain>.Ok(@Sepolia)
+  else if Id = Base.Id then
+    Result := TResult<PChain>.Ok(@Base)
+  else if Id = BaseGoerli.Id then
+    Result := TResult<PChain>.Ok(@BaseGoerli)
+  else if Id = PulseChain.Id then
+    Result := TResult<PChain>.Ok(@PulseChain)
   else
     Result := TResult<PChain>.Err(nil, TError.Create('Unknown chain id: %d', [Id]));
 end;
@@ -458,7 +528,7 @@ begin
   Result := Left.Id <> Right.Id;
 end;
 
-function TChain.SetTxType(Value: Byte): TChain;
+function TChain.SetTxType(const Value: Byte): TChain;
 begin
   Self.TxType := Value;
   Result := Self;
@@ -469,7 +539,7 @@ begin
   Result := Self.SetRPC(HTTPS, URL);
 end;
 
-function TChain.SetRPC(transport: TTransport; const URL: TURL): TChain;
+function TChain.SetRPC(const transport: TTransport; const URL: TURL): TChain;
 begin
   Self.RPC[transport] := URL;
   Result := Self;
@@ -508,7 +578,7 @@ end;
 
 { TResult }
 
-class function TResult<T>.Ok(aValue: T): IResult<T>;
+class function TResult<T>.Ok(const aValue: T): IResult<T>;
 begin
   const output = TResult<T>.Create;
   output.FValue := aValue;
@@ -516,7 +586,7 @@ begin
   Result := output;
 end;
 
-class function TResult<T>.Err(aDefault: T; aError: IError): IResult<T>;
+class function TResult<T>.Err(const aDefault: T; const aError: IError): IResult<T>;
 begin
   const output = TResult<T>.Create;
   output.FValue := aDefault;
@@ -527,7 +597,7 @@ begin
   Result := output;
 end;
 
-class function TResult<T>.Err(aDefault: T; aError: string): IResult<T>;
+class function TResult<T>.Err(const aDefault: T; const aError: string): IResult<T>;
 begin
   Result := TResult<T>.Err(aDefault, TError.Create(aError));
 end;
@@ -564,18 +634,6 @@ begin
   if Self.isErr then proc(Self.Error);
 end;
 
-function TResult<T>.&and(const predicate: TFunc<T, Boolean>; const proc: TProc<T>): IResult<T>;
-begin
-  Result := Self;
-  if Self.isOk and predicate(Self.Value) then proc(Self.Value);
-end;
-
-function TResult<T>.&and(const predicate: TFunc<IError, Boolean>; const proc: TProc<IError>): IResult<T>;
-begin
-  Result := Self;
-  if Self.isErr and predicate(Self.Error) then proc(Self.Error);
-end;
-
 procedure TResult<T>.&else(const proc: TProc<T>);
 begin
   if Self.isOk then proc(Self.Value);
@@ -598,77 +656,26 @@ begin
   Result := Self.FChain;
 end;
 
-// returns the chain’s latest asset price in USD (eg. ETH-USD for Ethereum, BNB-USD for BNB Chain, MATIC-USD for Polygon, etc)
-procedure TCustomWeb3.LatestPrice(callback: TProc<Double, IError>);
+// returns the chain’s latest native token price in USD (eg. ETH-USD for Ethereum, BNB-USD for BNB Chain, MATIC-USD for Polygon, etc)
+procedure TCustomWeb3.LatestPrice(const callback: TProc<Double, IError>);
 begin
-  if Chain = Ethereum then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
-  else if Chain = Sepolia then
-    web3.coincap.price('ethereum', callback)
-  else if Chain = Goerli then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
-  else if Chain = Optimism then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x13e3Ee699D1909E989722E753853AE30b17e08c5').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
-  else if Chain = OptimismGoerli then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x57241A37733983F97C4Ab06448F244A1E0Ca0ba8').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
-  else if (Chain = RSK) or (Chain = RSK_test_net) then
-    web3.coincap.price('bitcoin', callback)
-  else if Chain = BNB then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('binance-coin', callback) else callback(price, nil);
-    end)
-  else if Chain = BNB_test_net then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('binance-coin', callback) else callback(price, nil);
-    end)
-  else if Chain = Gnosis then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x678df3415fc31947dA4324eC63212874be5a82f8').Price(callback)
-  else if Chain = Polygon then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('polygon', callback) else callback(price, nil);
-    end)
-  else if Chain = PolygonMumbai then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('polygon', callback) else callback(price, nil);
-    end)
-  else if Chain = Fantom then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0xf4766552D15AE4d256Ad41B6cf2933482B0680dc').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('fantom', callback) else callback(price, nil);
-    end)
-  else if Chain = Fantom_test_net then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0xe04676B9A9A2973BCb0D1478b5E1E9098BBB7f3D').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('fantom', callback) else callback(price, nil);
-    end)
-  else if Chain = Arbitrum then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
-  else if Chain = ArbitrumGoerli then
-    web3.eth.chainlink.TAggregatorV3.Create(Self, '0x62CAe0FA2da220f43a51F86Db2EDb36DcA9A5A08').Price(procedure(price: Double; err: IError)
-    begin
-      if Assigned(err) then web3.coincap.price('ethereum', callback) else callback(price, nil);
-    end)
+  const coincap = procedure(const chain: TChain)
+  begin
+    if not chain.Symbol.IsEmpty then
+      web3.coincap.price(chain.Symbol, callback)
+    else
+      callback(0, TError.Create('Price feed does not exist on %s', [chain.Name]));
+  end;
+  if Self.Chain.Chainlink.IsZero then
+    coincap(Self.Chain)
   else
-    callback(0, TError.Create('Price feed does not exist on %s', [Self.Chain.Name]));
+    web3.eth.chainlink.TAggregatorV3.Create(Self, Self.Chain.Chainlink).Price(procedure(price: Double; err: IError)
+    begin
+      if Assigned(err) then
+        coincap(Self.Chain)
+      else
+        callback(price, nil);
+    end)
 end;
 
 function TCustomWeb3.GetCustomGasPrice: TWei;
@@ -678,10 +685,10 @@ begin
 end;
 
 procedure TCustomWeb3.CanSignTransaction(
-  from, &to   : TAddress;
-  gasPrice    : TWei;
-  estimatedGas: BigInteger;
-  callback    : TSignatureRequestResult);
+  const from, &to   : TAddress;
+  const gasPrice    : TWei;
+  const estimatedGas: BigInteger;
+  const callback    : TSignatureRequestResult);
 resourcestring
   RS_SIGNATURE_REQUEST = 'Your signature is being requested.'
         + #13#10#13#10 + 'Network: %s'
@@ -745,77 +752,73 @@ end;
 
 { TWeb3 }
 
-constructor TWeb3.Create(const aURL: string);
+constructor TWeb3.Create(const aURL: TURL);
 begin
   Self.Create(Ethereum.SetRPC(HTTPS, aURL));
 end;
 
-constructor TWeb3.Create(const aURL: string; aTxType: Byte);
-begin
-  Self.Create(Ethereum.SetRPC(HTTPS, aURL).SetTxType(aTxType));
-end;
-
-constructor TWeb3.Create(aChain: TChain);
+constructor TWeb3.Create(const aChain: TChain);
 begin
   Self.Create(aChain, TJsonRpcHttps.Create);
 end;
 
-constructor TWeb3.Create(aChain: TChain; aProtocol: IJsonRpc);
+constructor TWeb3.Create(const aChain: TChain; const aProtocol: IJsonRpc);
 begin
   Self.FChain    := aChain;
   Self.FProtocol := aProtocol;
 end;
 
-function TWeb3.Call(const method: string; args: array of const): IResult<TJsonObject>;
+function TWeb3.Call(const method: string; const args: array of const): IResult<TJsonObject>;
 begin
   Result := Self.FProtocol.Call(Self.Chain.RPC[HTTPS], method, args);
 end;
 
-procedure TWeb3.Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>);
+procedure TWeb3.Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>);
 begin
   Self.FProtocol.Call(Self.Chain.RPC[HTTPS], method, args, callback);
+end;
+
+{ TProxy }
+
+class function TProxy.Disabled: TProxy;
+begin
+  Result.Enabled := False;
 end;
 
 { TWeb3Ex }
 
 constructor TWeb3Ex.Create(
-  const aURL: string;
-  aProtocol : IPubSub;
-  aSecurity : TSecurity = TSecurity.Automatic);
+  const aURL     : TURL;
+  const aProtocol: IPubSub;
+  const aProxy   : TProxy;
+  const aSecurity: TSecurity);
 begin
-  Self.Create(Ethereum.SetRPC(WebSocket, aURL), aProtocol, aSecurity);
+  Self.Create(Ethereum.SetRPC(WebSocket, aURL), aProtocol, aProxy, aSecurity);
 end;
 
 constructor TWeb3Ex.Create(
-  const aURL: string;
-  aTxType   : Byte;
-  aProtocol : IPubSub;
-  aSecurity : TSecurity = TSecurity.Automatic);
-begin
-  Self.Create(Ethereum.SetRPC(WebSocket, aURL).SetTxType(aTxType), aProtocol, aSecurity);
-end;
-
-constructor TWeb3Ex.Create(
-  aChain    : TChain;
-  aProtocol : IPubSub;
-  aSecurity : TSecurity = TSecurity.Automatic);
+  const aChain   : TChain;
+  const aProtocol: IPubSub;
+  const aProxy   : TProxy;
+  const aSecurity: TSecurity);
 begin
   Self.FChain    := aChain;
   Self.FProtocol := aProtocol;
+  Self.FProxy    := aProxy;
   Self.FSecurity := aSecurity;
 end;
 
-function TWeb3Ex.Call(const method: string; args: array of const): IResult<TJsonObject>;
+function TWeb3Ex.Call(const method: string; const args: array of const): IResult<TJsonObject>;
 begin
-  Result := Self.FProtocol.Call(Self.Chain.RPC[WebSocket], Self.FSecurity, method, args);
+  Result := Self.FProtocol.Call(Self.Chain.RPC[WebSocket], Self.FProxy, Self.FSecurity, method, args);
 end;
 
-procedure TWeb3Ex.Call(const method: string; args: array of const; callback: TProc<TJsonObject, IError>);
+procedure TWeb3Ex.Call(const method: string; const args: array of const; const callback: TProc<TJsonObject, IError>);
 begin
-  Self.FProtocol.Call(Self.Chain.RPC[WebSocket], Self.FSecurity, method, args, callback);
+  Self.FProtocol.Call(Self.Chain.RPC[WebSocket], Self.FProxy, Self.FSecurity, method, args, callback);
 end;
 
-procedure TWeb3Ex.Subscribe(const subscription: string; callback: TProc<TJsonObject, IError>);
+procedure TWeb3Ex.Subscribe(const subscription: string; const callback: TProc<TJsonObject, IError>);
 begin
   Self.FProtocol.Subscribe(subscription, callback);
 end;
@@ -830,13 +833,13 @@ begin
   Self.FProtocol.Disconnect;
 end;
 
-function TWeb3Ex.OnError(callback: TProc<IError>): IWeb3Ex;
+function TWeb3Ex.OnError(const callback: TProc<IError>): IWeb3Ex;
 begin
   Self.FProtocol.OnError(callback);
   Result := Self;
 end;
 
-function TWeb3Ex.OnDisconnect(callback: TProc): IWeb3Ex;
+function TWeb3Ex.OnDisconnect(const callback: TProc): IWeb3Ex;
 begin
   Self.FProtocol.OnDisconnect(callback);
   Result := Self;

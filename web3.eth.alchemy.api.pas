@@ -55,17 +55,19 @@ type
   end;
 
   IAssetChanges = interface(IDeserializedArray<IAssetChange>)
-    function IndexOf(contract: TAddress): Integer;
-    procedure FilterBy(change: TChangeType);
+    function IndexOf(const contract: TAddress): Integer;
+    function Incoming(const address: TAddress): IAssetChanges;
+    function Outgoing(const address: TAddress): IAssetChanges;
   end;
 
+// simulate transaction, return array of asset changes
 procedure simulate(
-  const apiKey: string;
-  const chain : TChain;
-  from, &to   : TAddress;
-  value       : TWei;
-  const data  : string;
-  callback    : TProc<IAssetChanges, IError>);
+  const apiKey   : string;
+  const chain    : TChain;
+  const from, &to: TAddress;
+  const value    : TWei;
+  const data     : string;
+  const callback : TProc<IAssetChanges, IError>);
 
 type
   TContractType = (
@@ -74,11 +76,21 @@ type
     Spam     // probably spam. this contract contains a lot of duplicate NFTs, or the contract lies about its own token supply. running totalSupply() on the contract is vastly different from the empirical number of tokens in circulation.
   );
 
+// spam detection
 procedure detect(
   const apiKey  : string;
   const chain   : TChain;
   const contract: TAddress;
   const callback: TProc<TContractType, IError>);
+
+// simulate transaction, return incoming assets that are honeypots (eg. you cannot sell)
+procedure honeypots(
+  const apiKey   : string;
+  const chain    : TChain;
+  const from, &to: TAddress;
+  const value    : TWei;
+  const data     : string;
+  const callback : TProc<IAssetChanges, IError>);
 
 implementation
 
@@ -89,6 +101,7 @@ uses
   System.Net.URLClient,
   System.Math,
   // web3
+  web3.eth.abi,
   web3.eth.alchemy,
   web3.eth.types,
   web3.http,
@@ -172,8 +185,9 @@ type
   TAssetChanges = class(TDeserializedArray<IAssetChange>, IAssetChanges)
   public
     function Item(const Index: Integer): IAssetChange; override;
-    function IndexOf(contract: TAddress): Integer;
-    procedure FilterBy(change: TChangeType);
+    function IndexOf(const contract: TAddress): Integer;
+    function Incoming(const address: TAddress): IAssetChanges;
+    function Outgoing(const address: TAddress): IAssetChanges;
   end;
 
 function TAssetChanges.Item(const Index: Integer): IAssetChange;
@@ -181,7 +195,7 @@ begin
   Result := TAssetChange.Create(TJsonArray(FJsonValue)[Index]);
 end;
 
-function TAssetChanges.IndexOf(contract: TAddress): Integer;
+function TAssetChanges.IndexOf(const contract: TAddress): Integer;
 begin
   const count = Self.Count;
   if count > 0 then
@@ -191,25 +205,53 @@ begin
   Result := -1;
 end;
 
-procedure TAssetChanges.FilterBy(change: TChangeType);
+function TAssetChanges.Incoming(const address: TAddress): IAssetChanges;
 begin
-  var I := 0;
-  while I < Self.Count do
-    if Self.Item(I).Change = change then
-      Inc(I)
-    else
-      Self.Delete(I);
+  var value := Self.FJsonValue.Clone as TJsonArray;
+  try
+    var index := 0;
+    while index < value.Count do
+    begin
+      const change: IAssetChange = TAssetChange.Create(value[index]);
+      if (change.Change = Transfer) and change.&To.SameAs(address) then
+        Inc(index)
+      else
+        value.Remove(index);
+    end;
+    Result := TAssetChanges.Create(value);
+  finally
+    value.Free;
+  end;
 end;
 
-procedure _simulate(
-  const apiKey: string;
-  const chain : TChain;
-  from, &to   : TAddress;
-  value       : TWei;
-  const data  : string;
-  callback    : TProc<TJsonObject, IError>);
+function TAssetChanges.Outgoing(const address: TAddress): IAssetChanges;
 begin
-  web3.eth.alchemy.endpoint(chain, apiKey)
+  var value := Self.FJsonValue.Clone as TJsonArray;
+  try
+    var index := 0;
+    while index < value.Count do
+    begin
+      const change: IAssetChange = TAssetChange.Create(value[index]);
+      if (change.Change = Transfer) and change.From.SameAs(address) then
+        Inc(index)
+      else
+        value.Remove(index);
+    end;
+    Result := TAssetChanges.Create(value);
+  finally
+    value.Free;
+  end;
+end;
+
+procedure alchemy_simulateAssetChanges(
+  const apiKey   : string;
+  const chain    : TChain;
+  const from, &to: TAddress;
+  const value    : TWei;
+  const data     : string;
+  const callback : TProc<TJsonObject, IError>);
+begin
+  web3.eth.alchemy.endpoint(chain, apiKey, core)
     .ifErr(procedure(err: IError)
     begin
       callback(nil, err)
@@ -218,12 +260,12 @@ begin
     begin
       const client = TWeb3.Create(chain.SetRPC(endpoint));
       try
-        const params = web3.json.unmarshal(Format(
-          '{"from": %s, "to": %s, "value": %s, "data": %s}', [
-            web3.json.quoteString(string(from), '"'),
-            web3.json.quoteString(string(&to), '"'),
-            web3.json.quoteString(toHex(value, [zeroAs0x0]), '"'),
-            web3.json.quoteString(data, '"')]));
+        const params = web3.json.unmarshal(Format('{"from": %s, "to": %s, "value": %s, "data": %s}', [
+          web3.json.quoteString(string(from), '"'),
+          web3.json.quoteString(string(&to), '"'),
+          web3.json.quoteString(toHex(value, [zeroAs0x0]), '"'),
+          web3.json.quoteString(data, '"')
+        ]));
         try
           client.Call('alchemy_simulateAssetChanges', [params], procedure(response: TJsonObject; err: IError)
           begin
@@ -242,14 +284,14 @@ begin
 end;
 
 procedure simulate(
-  const apiKey: string;
-  const chain : TChain;
-  from, &to   : TAddress;
-  value       : TWei;
-  const data  : string;
-  callback    : TProc<IAssetChanges, IError>);
+  const apiKey   : string;
+  const chain    : TChain;
+  const from, &to: TAddress;
+  const value    : TWei;
+  const data     : string;
+  const callback : TProc<IAssetChanges, IError>);
 begin
-  _simulate(apiKey, chain, from, &to, value, data, procedure(response: TJsonObject; err: IError)
+  alchemy_simulateAssetChanges(apiKey, chain, from, &to, value, data, procedure(response: TJsonObject; err: IError)
   begin
     if Assigned(err) then
     begin
@@ -273,44 +315,43 @@ begin
 end;
 
 procedure getTokenIDs(
-  const apiKey   : string;
-  const chain    : TChain;
-  const contract : TAddress;
-  const startWith: string;
-  const callback : TProc<TJsonValue, IError>); overload;
-begin
-  web3.eth.alchemy.endpoint(chain, apiKey, True)
-    .ifErr(procedure(err: IError)
-    begin
-      callback(nil, err)
-    end)
-    .&else(procedure(endpoint: string)
-    begin
-      web3.http.get((function: string
-        begin
-          Result := Format('%s/getNFTsForCollection?contractAddress=%s', [endpoint, contract]);
-          if startWith <> '' then
-            Result := Result + '&startToken=' + startWith;
-        end)(),
-        [TNetHeader.Create('accept', 'application/json')],
-        callback
-      );
-    end);
-end;
-
-procedure getTokenIDs(
   const apiKey: string;
   const chain: TChain;
   const contract: TAddress;
-  const callback: TProc<TArray<string>, IError>); overload;
+  const callback: TProc<TArray<string>, IError>);
 type
   TPage = reference to procedure(const startWith: string; result: TArray<string>);
 begin
-  var page: TPage;
+  const get = procedure(
+    const apiKey   : string;
+    const chain    : TChain;
+    const contract : TAddress;
+    const startWith: string;
+    const callback : TProc<TJsonValue, IError>)
+  begin
+    web3.eth.alchemy.endpoint(chain, apiKey, nft)
+      .ifErr(procedure(err: IError)
+      begin
+        callback(nil, err)
+      end)
+      .&else(procedure(endpoint: string)
+      begin
+        web3.http.get((function: string
+          begin
+            Result := Format('%s/getNFTsForCollection?contractAddress=%s', [endpoint, contract]);
+            if startWith <> '' then
+              Result := Result + '&startToken=' + startWith;
+          end)(),
+          [TNetHeader.Create('accept', 'application/json')],
+          callback
+        );
+      end);
+  end;
 
+  var page: TPage;
   page := procedure(const startWith: string; result: TArray<string>)
   begin
-    getTokenIDs(apiKey, chain, contract, startWith, procedure(response: TJsonValue; err: IError)
+    get(apiKey, chain, contract, startWith, procedure(response: TJsonValue; err: IError)
     begin
       if Assigned(err) then
       begin
@@ -345,7 +386,7 @@ procedure isAirdrop(
   const contract: TAddress;
   const callback: TProc<Boolean, IError>);
 begin
-  web3.eth.alchemy.endpoint(chain, apiKey, True)
+  web3.eth.alchemy.endpoint(chain, apiKey, nft)
     .ifErr(procedure(err: IError)
     begin
       callback(False, err)
@@ -390,7 +431,7 @@ procedure isSpam(
   const contract: TAddress;
   const callback: TProc<TJsonValue, IError>);
 begin
-  web3.eth.alchemy.endpoint(chain, apiKey, True)
+  web3.eth.alchemy.endpoint(chain, apiKey, nft)
     .ifErr(procedure(err: IError)
     begin
       callback(nil, err)
@@ -424,6 +465,175 @@ begin
           callback(Good, err);
       end);
   end);
+end;
+
+type
+  ITransaction = interface
+    function From   : TAddress;
+    function &To    : TAddress;
+    function Value  : TWei;
+    function Data   : string;
+    function Marshal: string;
+  end;
+
+type
+  TTransaction = class(TInterfacedObject, ITransaction)
+  private
+    FFrom : TAddress;
+    FTo   : TAddress;
+    FValue: TWei;
+    FData : string;
+  public
+    function From   : TAddress;
+    function &To    : TAddress;
+    function Value  : TWei;
+    function Data   : string;
+    function Marshal: string;
+    constructor Create(const from, &to: TAddress; const value: TWei; const data: string);
+  end;
+
+constructor TTransaction.Create(const from, &to: TAddress; const value: BigInteger; const data: string);
+begin
+  Self.FFrom  := from;
+  Self.FTo    := &to;
+  Self.FValue := value;
+  Self.FData  := data;
+end;
+
+function TTransaction.From: TAddress;
+begin
+  Result := Self.FFrom;
+end;
+
+function TTransaction.&To: TAddress;
+begin
+  Result := Self.FTo;
+end;
+
+function TTransaction.Value: TWei;
+begin
+  Result := Self.FValue;
+end;
+
+function TTransaction.Data: string;
+begin
+  Result := Self.FData;
+end;
+
+function TTransaction.Marshal: string;
+begin
+  Result := Format('{"from": %s, "to": %s, "value": %s, "data": %s}', [
+    web3.json.quoteString(string(Self.From), '"'),
+    web3.json.quoteString(string(Self.&To), '"'),
+    web3.json.quoteString(toHex(Self.Value, [zeroAs0x0]), '"'),
+    web3.json.quoteString(Self.Data, '"')
+  ]);
+end;
+
+procedure alchemy_simulateAssetChangesBundle(
+  const apiKey   : string;
+  const chain    : TChain;
+  const tx1, tx2 : ITransaction;
+  const callback : TProc<TJsonArray, IError>);
+begin
+  web3.eth.alchemy.endpoint(chain, apiKey, core)
+    .ifErr(procedure(err: IError)
+    begin
+      callback(nil, err)
+    end)
+    .&else(procedure(endpoint: string)
+    begin
+      const client = TWeb3.Create(chain.SetRPC(endpoint));
+      try
+        const params = web3.json.unmarshal(Format('[%s, %s]', [tx1.Marshal, tx2.Marshal]));
+        try
+          client.Call('alchemy_simulateAssetChangesBundle', [params], procedure(response: TJsonObject; err: IError)
+          begin
+            if Assigned(err) then
+              callback(nil, err)
+            else
+              callback(web3.json.getPropAsArr(response, 'result'), nil);
+          end);
+        finally
+          params.Free;
+        end;
+      finally
+        client.Free;
+      end;
+    end);
+end;
+
+procedure honeypots(
+  const apiKey   : string;
+  const chain    : TChain;
+  const from, &to: TAddress;
+  const value    : TWei;
+  const data     : string;
+  const callback : TProc<IAssetChanges, IError>);
+begin
+  // step #1: simulate asset changes
+  simulate(apiKey, chain, from, &to, value, data, procedure(changes: IAssetChanges; err: IError)
+  begin
+    if Assigned(err) or not Assigned(changes) then
+    begin
+      callback(nil, err);
+      EXIT;
+    end;
+    // step #2: get incoming tokens
+    const incoming = changes.Incoming(from);
+    // step #3: simulate a sell for each and every incoming erc20
+    var next: TProc<Integer, TProc>;
+    next := procedure(incomingIndex: Integer; done: TProc)
+    begin
+      if incomingIndex >= incoming.Count then
+      begin
+        done;
+        EXIT;
+      end;
+      const change = incoming.Item(incomingIndex);
+      if change.Asset <> erc20 then
+      begin
+        incoming.Delete(incomingIndex);
+        next(incomingIndex, done);
+        EXIT;
+      end;
+      alchemy_simulateAssetChangesBundle(apiKey, chain,
+        TTransaction.Create(from, &to, value, data),
+        TTransaction.Create(
+          from,
+          change.Contract,
+          0,
+          web3.eth.abi.encode('transfer(address,uint256)', ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', web3.utils.toHex(change.Amount)])
+        ),
+        procedure(response: TJsonArray; err: IError)
+        begin
+          if (err <> nil) or (response = nil) or (response.Count < 2) then
+          begin
+            callback(nil, err);
+            EXIT;
+          end;
+          const error = web3.json.getPropAsObj(response[1], 'error');
+          if Assigned(error) then
+          begin
+            callback(nil, TError.Create(web3.json.getPropAsStr(error, 'message', 'an unknown error occurred')));
+            EXIT;
+          end;
+          const outgoing = TAssetChanges.Create(web3.json.getPropAsArr(response[1], 'changes')).Outgoing(from);
+          const outgoingIndex = outgoing.IndexOf(change.Contract);
+          if (outgoingIndex > -1) and (outgoing.Item(outgoingIndex).Amount >= change.Amount) then
+          begin
+            incoming.Delete(incomingIndex);
+            next(incomingIndex, done);
+            EXIT;
+          end;
+          next(incomingIndex + 1, done);
+        end);
+    end;
+    next(0, procedure
+    begin
+      callback(incoming, nil);
+    end);
+  end)
 end;
 
 end.
