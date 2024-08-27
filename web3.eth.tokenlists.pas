@@ -41,7 +41,7 @@ uses
 
 type
   IToken = interface
-    function ChainId: UInt32;
+    function ChainId: UInt64;
     function Address: TAddress;
     function Name: string;
     function Symbol: string;
@@ -67,6 +67,7 @@ function tokens(const chain: TChain; const callback: TProc<TTokens, IError>): IA
 
 function unsupported(const chain: TChain; const callback: TProc<TTokens, IError>): IAsyncResult;
 function token(const chain: TChain; const token: TAddress; const callback: TProc<IToken, IError>): IAsyncResult;
+function DAI: IToken;
 
 implementation
 
@@ -83,43 +84,47 @@ uses
 type
   TToken = class(TCustomDeserialized, IToken)
   private
-    FChainId: UInt32;
+    FChainId: UInt64;
     FAddress: TAddress;
     FName: string;
     FSymbol: string;
     FDecimals: Integer;
     FLogo: TURL;
   public
-    function ChainId: UInt32;
+    function ChainId: UInt64;
     function Address: TAddress;
     function Name: string;
     function Symbol: string;
     function Decimals: Integer;
     function Logo: TURL;
     procedure Balance(const client: IWeb3; const owner: TAddress; const callback: TProc<BigInteger, IError>);
-    constructor Create(const aJsonValue: TJsonValue); override;
+    constructor Create(const aJsonValue: TJsonValue); overload; override;
+    constructor Create(const aChainId: UInt64; const aAddress: TAddress; const aName, aSymbol: string; const aDecimals: Integer; const aLogo: TURL); reintroduce; overload;
   end;
 
 constructor TToken.Create(const aJsonValue: TJsonValue);
 begin
   inherited Create(aJsonValue);
-  FChainId := getPropAsInt(aJsonValue, 'chainId');
-  FAddress := TAddress.Create((function: string
-  begin
-    Result := getPropAsStr(aJsonValue, 'address');
-    if Result = '' then Result := getPropAsStr(aJsonValue, 'contract');
-  end)());
-  FName := getPropAsStr(aJsonValue, 'name');
-  FSymbol := getPropAsStr(aJsonValue, 'symbol');
+  FChainId  := getPropAsInt(aJsonValue, 'chainId');
+  FAddress  := TAddress.Create(getPropAsStr(aJsonValue, 'address', getPropAsStr(aJsonValue, 'contract')));
+  FName     := getPropAsStr(aJsonValue, 'name');
+  FSymbol   := getPropAsStr(aJsonValue, 'symbol');
   FDecimals := getPropAsInt(aJsonValue, 'decimals');
-  FLogo := (function: string
-  begin
-    Result := getPropAsStr(aJsonValue, 'logoURI');
-    if Result = '' then Result := getPropAsStr(aJsonValue, 'image');
-  end)();
+  FLogo     := getPropAsStr(aJsonValue, 'logoURI', getPropAsStr(aJsonValue, 'image'));
 end;
 
-function TToken.ChainId: UInt32;
+constructor TToken.Create(const aChainId: UInt64; const aAddress: TAddress; const aName, aSymbol: string; const aDecimals: Integer; const aLogo: TURL);
+begin
+  inherited Create(nil);
+  FChainId  := aChainId;
+  FAddress  := aAddress;
+  FName     := aName;
+  FSymbol   := aSymbol;
+  FDecimals := aDecimals;
+  FLogo     := aLogo;
+end;
+
+function TToken.ChainId: UInt64;
 begin
   Result := FChainId;
 end;
@@ -315,6 +320,18 @@ begin
     else
       callback(tokens[I], nil);
   end);
+end;
+
+function DAI: IToken;
+begin
+  Result := TToken.Create(
+    1,
+    '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+    'Dai Stablecoin',
+    'DAI',
+    18,
+    'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png'
+  );
 end;
 
 end.

@@ -56,6 +56,7 @@ uses
   web3.eth.balancer.v2 in '..\web3.eth.balancer.v2.pas',
   web3.eth.blocknative.mempool in '..\web3.eth.blocknative.mempool.pas',
   web3.eth.blocknative.mempool.sgc in '..\web3.eth.blocknative.mempool.sgc.pas',
+  web3.eth.blocknative in '..\web3.eth.blocknative.pas',
   web3.eth.breadcrumbs in '..\web3.eth.breadcrumbs.pas',
   web3.eth.chainlink in '..\web3.eth.chainlink.pas',
   web3.eth.compound in '..\web3.eth.compound.pas',
@@ -81,6 +82,8 @@ uses
   web3.eth.origin.dollar in '..\web3.eth.origin.dollar.pas',
   web3.eth in '..\web3.eth.pas',
   web3.eth.pubsub in '..\web3.eth.pubsub.pas',
+  web3.eth.simulate in '..\web3.eth.simulate.pas',
+  web3.eth.tenderly in '..\web3.eth.tenderly.pas',
   web3.eth.tokenlists in '..\web3.eth.tokenlists.pas',
   web3.eth.tx in '..\web3.eth.tx.pas',
   web3.eth.tx.tests in '..\web3.eth.tx.tests.pas',
@@ -108,6 +111,7 @@ uses
   web3.sync in '..\web3.sync.pas',
   web3.utils in '..\web3.utils.pas';
 
+{ keep comment here to protect the following conditional from being removed by the IDE when adding a unit }
 {$IFNDEF TESTINSIGHT}
 var
   runner: ITestRunner;

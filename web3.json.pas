@@ -49,12 +49,14 @@ type
   public
     constructor Create(const aJsonValue: TJsonValue); override;
     destructor Destroy; override;
+    function ToString: string; override;
   end;
 
   IDeserializedArray<T: IInterface> = interface
     function Count: Integer;
     procedure Delete(const Index: Integer);
     function Item(const Index: Integer): T;
+    function ToString: string;
   end;
 
   TDeserializedArray<T: IInterface> = class abstract(TDeserialized, IDeserializedArray<T>)
@@ -69,12 +71,13 @@ function unmarshal(const value: string): TJsonValue;
 
 function getPropAsStr(const obj: TJsonValue; const name: string; const def: string = ''): string;
 function getPropAsInt(const obj: TJsonValue; const name: string; const def: Integer = 0): Integer;
+function getPropAsUInt64(const obj: TJsonValue; const name: string; const def: UInt64 = 0): UInt64;
 function getPropAsDouble(const obj: TJsonValue; const name: string; const def: Double = 0): Double;
 function getPropAsBigInt(const obj: TJsonValue; const name: string): BigInteger; overload;
 function getPropAsBigInt(const obj: TJsonValue; const name: string; const def: BigInteger): BigInteger; overload;
 function getPropAsObj(const obj: TJsonValue; const name: string): TJsonObject;
 function getPropAsArr(const obj: TJsonValue; const name: string): TJsonArray;
-function getPropAsBOOL(const obj: TJsonValue; const name: string; const def: Boolean = False): Boolean;
+function getPropAsBool(const obj: TJsonValue; const name: string; const def: Boolean = False): Boolean;
 
 function quoteString(const S: string; const Quote: Char = '"'): string;
 
@@ -92,7 +95,10 @@ end;
 constructor TDeserialized.Create(const aJsonValue: TJsonValue);
 begin
   inherited Create(aJsonValue);
-  FJsonValue := aJsonValue.Clone as TJsonValue;
+  if Assigned(aJsonValue) then
+    FJsonValue := aJsonValue.Clone as TJsonValue
+  else
+    FJsonValue := nil;
 end;
 
 destructor TDeserialized.Destroy;
@@ -101,11 +107,16 @@ begin
   inherited Destroy;
 end;
 
+function TDeserialized.ToString: string;
+begin
+  Result := web3.json.marshal(Self.FJsonValue);
+end;
+
 {--------------------------- TDeserializedArray<T> ----------------------------}
 
 function TDeserializedArray<T>.Count: Integer;
 begin
-  if Self.FJsonValue is TJsonArray then
+  if Assigned(Self.FJsonValue) and (Self.FJsonValue is TJsonArray) then
     Result := TJsonArray(Self.FJsonValue).Count
   else
     Result := 0;
@@ -113,6 +124,8 @@ end;
 
 procedure TDeserializedArray<T>.Delete(const Index: Integer);
 begin
+  if not Assigned(Self.FJsonValue) then
+    EXIT;
   if not(Self.FJsonValue is TJsonArray) then
     EXIT;
   TJsonArray(Self.FJsonValue).Remove(Index);
@@ -185,6 +198,25 @@ begin
           Result := StrToIntDef(TJsonString(P.JsonValue).Value, def)
         else
           Result := def;
+end;
+
+function getPropAsUInt64(const obj: TJsonValue; const name: string; const def: UInt64): UInt64;
+begin
+  Result := def;
+  if not Assigned(obj) then
+    EXIT;
+  if not(obj is TJsonObject) then
+    EXIT;
+  const P = TJsonObject(obj).Get(name);
+  if Assigned(P) and Assigned(P.JsonValue) then
+    if P.JsonValue is TJsonNumber then
+      {$IF CompilerVersion < 35}
+      Result := StrToUInt64Def(P.JsonValue.Value, def)
+      {$ELSE}
+      Result := TJsonNumber(P.JsonValue).AsUInt64
+      {$IFEND}
+    else if P.JsonValue is TJsonString then
+      Result := StrToUInt64Def(TJsonString(P.JsonValue).Value, def);
 end;
 
 function getPropAsDouble(const obj: TJsonValue; const name: string; const def: Double): Double;
@@ -260,7 +292,7 @@ begin
         Result := TJsonArray(P.JsonValue);
 end;
 
-function getPropAsBOOL(const obj: TJsonValue; const name: string; const def: Boolean): Boolean;
+function getPropAsBool(const obj: TJsonValue; const name: string; const def: Boolean): Boolean;
 begin
   Result := def;
   if not Assigned(obj) then

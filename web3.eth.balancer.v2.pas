@@ -449,13 +449,19 @@ begin
     const SUBGRAPH = (function(chain: TChain): IResult<string>
     begin
       if chain = Ethereum then
-        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2')
-      else if chain = Goerli then
-        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-goerli-v2')
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/75376/balancer-v2/version/latest')
+      else if chain = Sepolia then
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/24660/balancer-sepolia-v2/version/latest')
       else if chain = Polygon then
-        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-polygon-v2')
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/75376/balancer-polygon-v2/version/latest')
       else if chain = Arbitrum then
-        Result := TResult<string>.Ok('https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-arbitrum-v2')
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/75376/balancer-arbitrum-v2/version/latest')
+      else if chain = Optimism then
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/75376/balancer-optimism-v2/version/latest')
+      else if chain = Gnosis then
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/75376/balancer-gnosis-chain-v2/version/latest')
+      else if chain = Base then
+        Result := TResult<string>.Ok('https://api.studio.thegraph.com/query/24660/balancer-base-v2/version/latest')
       else
         Result := TResult<string>.Err('', TError.Create('%s not supported', [chain.Name]));
     end)(chain);
@@ -497,32 +503,21 @@ end;
 
 procedure tokens(const chain: TChain; const callback: TProc<TTokens, IError>);
 begin
-  if (chain = Ethereum) or (chain = Goerli) then
+  web3.eth.tokenlists.tokens('https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json', procedure(tokens: TTokens; err: IError)
   begin
-    web3.eth.tokenlists.tokens((function: TURL
+    if Assigned(err) or not Assigned(tokens) then
     begin
-      if chain = Goerli then
-        Result := 'https://raw.githubusercontent.com/svanas/delphereum/master/web3.eth.balancer.v2.tokenlist.goerli.json'
+      callback(nil, err);
+      EXIT;
+    end;
+    var I := 0;
+    while I < tokens.Length do
+      if tokens[I].ChainId <> chain.Id then
+        Delete(tokens, I, 1)
       else
-        Result := 'https://raw.githubusercontent.com/balancer-labs/assets/master/generated/listed.tokenlist.json';
-    end)(), procedure(tokens: TTokens; err: IError)
-    begin
-      if Assigned(err) or not Assigned(tokens) then
-      begin
-        callback(nil, err);
-        EXIT;
-      end;
-      var I := 0;
-      while I < tokens.Length do
-        if tokens[I].ChainId <> chain.Id then
-          Delete(tokens, I, 1)
-        else
-          Inc(I);
-      callback(tokens, nil);
-    end);
-    EXIT;
-  end;
-  web3.eth.tokenlists.tokens(chain, callback);
+        Inc(I);
+    callback(tokens, nil);
+  end);
 end;
 
 {---------- easy access function: returns the Vault's WETH instance -----------}

@@ -1,4 +1,4 @@
-{******************************************************************************}
+ï»¿{******************************************************************************}
 {                                                                              }
 {                                  Delphereum                                  }
 {                                                                              }
@@ -46,14 +46,15 @@ type
   TAssetType    = (native, erc20, erc721, erc1155);
 
   TChain = record
-    Id       : UInt32;   // https://chainlist.org
-    Name     : string;
-    Symbol   : string;   // native token symbol
-    TxType   : Byte;     // https://eips.ethereum.org/EIPS/eip-2718 (0 = Legacy, 2 = EIP-1559)
+    Id       : UInt64;      // https://chainlist.org
+    Name     : ShortString;
+    Symbol   : ShortString; // native token symbol
+    TxType   : Byte;        // https://eips.ethereum.org/EIPS/eip-2718 (0 = Legacy, 2 = EIP-1559)
     RPC      : array[TTransport] of TURL;
-    Explorer : TURL;     // block explorer
-    Tokens   : TURL;     // Uniswap-compatible token list
-    Chainlink: TAddress; // address of chainlink's Symbol/USD price feed on this chain
+    Explorer : TURL;        // block explorer
+    Tokens   : TURL;        // Uniswap-compatible token list
+    Chainlink: TAddress;    // address of chainlink's Symbol/USD price feed on this chain
+    WETH     : TAddress;    // address of canonical WETH
     class operator Equal(const Left, Right: TChain): Boolean;
     class operator NotEqual(const Left, Right: TChain): Boolean;
     function SetTxType(const Value: Byte): TChain;
@@ -70,7 +71,8 @@ const
     TxType   : 2;
     Explorer : 'https://etherscan.io';
     Tokens   : 'https://tokens.coingecko.com/uniswap/all.json';
-    Chainlink: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419'
+    Chainlink: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
+    WETH     : '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
   );
   Ganache: TChain = (
     Id       : 1337;
@@ -78,15 +80,6 @@ const
     Symbol   : 'ETH';
     TxType   : 2;
     RPC      : ('http://127.0.0.1:7545', '')
-  );
-  Goerli: TChain = (
-    Id       : 5;
-    Name     : 'Goerli';
-    Symbol   : 'ETH';
-    TxType   : 2;
-    Explorer : 'https://goerli.etherscan.io';
-    Tokens   : 'https://raw.githubusercontent.com/svanas/delphereum/master/web3.eth.balancer.v2.tokenlist.goerli.json';
-    Chainlink: '0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e'
   );
   Optimism: TChain = (
     Id       : 10;
@@ -96,16 +89,18 @@ const
     RPC      : ('https://mainnet.optimism.io', '');
     Explorer : 'https://optimistic.etherscan.io';
     Tokens   : 'https://static.optimism.io/optimism.tokenlist.json';
-    Chainlink: '0x13e3Ee699D1909E989722E753853AE30b17e08c5'
+    Chainlink: '0x13e3Ee699D1909E989722E753853AE30b17e08c5';
+    WETH     : '0x4200000000000000000000000000000000000006'
   );
-  OptimismGoerli: TChain = (
-    Id       : 420;
-    Name     : 'Optimism Goerli';
+  OptimismSepolia: TChain = (
+    Id       : 11155420;
+    Name     : 'Optimism Sepolia';
     Symbol   : 'ETH';
     TxType   : 2;
-    RPC      : ('https://goerli.optimism.io', '');
-    Explorer : 'https://goerli-optimistic.etherscan.io';
-    Chainlink: '0x57241A37733983F97C4Ab06448F244A1E0Ca0ba8'
+    RPC      : ('https://sepolia.optimism.io', '');
+    Explorer : 'https://sepolia-optimism.etherscan.io';
+    Chainlink: '0x61Ec26aA57019C486B10502285c5A3D4A4750AD7';
+    WETH     : '0x4200000000000000000000000000000000000006'
   );
   RSK: TChain = (
     Id       : 30;
@@ -131,9 +126,10 @@ const
     RPC      : ('https://bsc-dataseed.binance.org', '');
     Explorer : 'https://bscscan.com';
     Tokens   : 'https://tokens.pancakeswap.finance/pancakeswap-extended.json';
-    Chainlink: '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'
+    Chainlink: '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
+    WETH     : '0x2170Ed0880ac9A755fd29B2688956BD959F933F8'
   );
-  BNB_test_net   : TChain = (
+  BNB_test_net: TChain = (
     Id       : 97;
     Name     : 'BNB Chain testnet';
     Symbol   : 'BNB';
@@ -150,7 +146,8 @@ const
     RPC      : ('https://rpc.gnosischain.com', 'wss://rpc.gnosischain.com/wss');
     Explorer : 'https://gnosisscan.io/';
     Tokens   : 'https://tokens.honeyswap.org';
-    Chainlink: '0x678df3415fc31947dA4324eC63212874be5a82f8'
+    Chainlink: '0x678df3415fc31947dA4324eC63212874be5a82f8';
+    WETH     : '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1'
   );
   Polygon: TChain = (
     Id       : 137;
@@ -159,15 +156,17 @@ const
     TxType   : 2;
     Explorer : 'https://polygonscan.com';
     Tokens   : 'https://unpkg.com/quickswap-default-token-list@latest/build/quickswap-default.tokenlist.json';
-    Chainlink: '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0'
+    Chainlink: '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0';
+    WETH     : '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619'
   );
-  PolygonMumbai: TChain = (
-    Id       : 80001;
-    Name     : 'Polygon Mumbai';
+  PolygonAmoy: TChain = (
+    Id       : 80002;
+    Name     : 'Polygon Amoy';
     Symbol   : 'MATIC';
     TxType   : 2;
-    Explorer : 'https://mumbai.polygonscan.com';
-    Chainlink: '0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada'
+    RPC      : ('https://polygon-amoy-bor-rpc.publicnode.com', 'wss://polygon-amoy-bor-rpc.publicnode.com');
+    Explorer : 'https://amoy.polygonscan.com';
+    Chainlink: '0x001382149eBa3441043c1c66972b4772963f5D43'
   );
   Fantom: TChain = (
     Id       : 250;
@@ -177,7 +176,8 @@ const
     RPC      : ('https://rpc.fantom.network', '');
     Explorer : 'https://ftmscan.com';
     Tokens   : 'https://raw.githubusercontent.com/SpookySwap/spooky-info/master/src/constants/token/spookyswap.json';
-    Chainlink: '0xf4766552D15AE4d256Ad41B6cf2933482B0680dc'
+    Chainlink: '0xf4766552D15AE4d256Ad41B6cf2933482B0680dc';
+    WETH     : '0x658b0c7613e890EE50B8C4BC6A3f41ef411208aD'
   );
   Fantom_test_net: TChain = (
     Id       : 4002;
@@ -192,20 +192,21 @@ const
     Id       : 42161;
     Name     : 'Arbitrum';
     Symbol   : 'ETH';
-    TxType   : 0;
+    TxType   : 2;
     RPC      : ('https://arb1.arbitrum.io/rpc', '');
-    Explorer : 'https://explorer.arbitrum.io';
+    Explorer : 'https://arbiscan.io';
     Tokens   : 'https://bridge.arbitrum.io/token-list-42161.json';
-    Chainlink: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612'
+    Chainlink: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612';
+    WETH     : '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
   );
-  ArbitrumGoerli: TChain = (
-    Id       : 421613;
-    Name     : 'Arbitrum Goerli';
+  ArbitrumSepolia: TChain = (
+    Id       : 421614;
+    Name     : 'Arbitrum Sepolia';
     Symbol   : 'ETH';
-    TxType   : 0;
-    RPC      : ('https://goerli-rollup.arbitrum.io/rpc', '');
-    Explorer : 'https://goerli-rollup-explorer.arbitrum.io';
-    Chainlink: '0x62CAe0FA2da220f43a51F86Db2EDb36DcA9A5A08'
+    TxType   : 2;
+    RPC      : ('https://sepolia-rollup.arbitrum.io/rpc', '');
+    Explorer : 'https://sepolia.arbiscan.io';
+    Chainlink: '0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165'
   );
   Sepolia: TChain = (
     Id       : 11155111;
@@ -220,16 +221,21 @@ const
     Id       : 8453;
     Name     : 'Base';
     Symbol   : 'ETH';
-    TxType   : 2
+    TxType   : 2;
+    RPC      : ('https://mainnet.base.org', '');
+    Explorer : 'https://basescan.org';
+    Chainlink: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70';
+    WETH     : '0x4200000000000000000000000000000000000006'
   );
-  BaseGoerli: TChain = (
-    Id       : 84531;
-    Name     : 'Base Goerli';
+  BaseSepolia: TChain = (
+    Id       : 84532;
+    Name     : 'Base Sepolia';
     Symbol   : 'ETH';
     TxType   : 2;
-    RPC      : ('https://goerli.base.org', '');
-    Explorer : 'https://goerli.basescan.org';
-    Chainlink: '0xcD2A119bD1F7DF95d706DE6F2057fDD45A0503E2'
+    RPC      : ('https://sepolia.base.org', '');
+    Explorer : 'https://sepolia.basescan.org';
+    Chainlink: '0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1';
+    WETH     : '0x4200000000000000000000000000000000000006'
   );
   PulseChain: TChain = (
     Id       : 369;
@@ -240,10 +246,38 @@ const
     Explorer : 'https://scan.pulsechain.com';
     Tokens   : 'https://pulsechain-sacrifice-checker.vercel.app/tokens.json'
   );
+  Holesky: TChain = (
+    Id       : 17000;
+    Name     : 'Holesky';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    Explorer : 'https://holesky.etherscan.io'
+  );
+  Scroll: TChain = (
+    Id       : 534352;
+    Name     : 'Scroll';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://rpc.scroll.io', '');
+    Explorer : 'https://scrollscan.com';
+    Chainlink: '0x6bF14CB0A831078629D993FDeBcB182b21A8774C';
+    WETH     : '0x5300000000000000000000000000000000000004'
+  );
+  ScrollSepolia: TChain = (
+    Id       : 534351;
+    Name     : 'ScrollSepolia';
+    Symbol   : 'ETH';
+    TxType   : 2;
+    RPC      : ('https://sepolia-rpc.scroll.io', '');
+    Explorer : 'https://sepolia.scrollscan.com';
+    Chainlink: '0x59F1ec1f10bD7eD9B938431086bC1D9e233ECf41';
+    WETH     : '0x5300000000000000000000000000000000000004'
+  );
 
 type
   TAssetTypeHelper = record helper for TAssetType
     constructor Create(const name: string);
+    function IsNFT: Boolean;
   end;
 
   IError = interface
@@ -437,7 +471,7 @@ type
 function Now: TUnixDateTime; inline;
 function Infinite: BigInteger; inline;
 function MaxInt256: BigInteger; inline;
-function Chain(const Id: UInt32): IResult<PChain>; inline;
+function Chain(const Id: UInt64): IResult<PChain>; inline;
 
 implementation
 
@@ -472,16 +506,14 @@ begin
   Result := BigInteger.Create('57896044618658097711785492504343953926634992332820282019728792003956564819967');
 end;
 
-function Chain(const Id: UInt32): IResult<PChain>;
+function Chain(const Id: UInt64): IResult<PChain>;
 begin
   if Id = Ethereum.Id then
     Result := TResult<PChain>.Ok(@Ethereum)
-  else if Id = Goerli.Id then
-    Result := TResult<PChain>.Ok(@Goerli)
   else if Id = Optimism.Id then
     Result := TResult<PChain>.Ok(@Optimism)
-  else if Id = OptimismGoerli.Id then
-    Result := TResult<PChain>.Ok(@OptimismGoerli)
+  else if Id = OptimismSepolia.Id then
+    Result := TResult<PChain>.Ok(@OptimismSepolia)
   else if Id = RSK.Id then
     Result := TResult<PChain>.Ok(@RSK)
   else if Id = RSK_test_net.Id then
@@ -494,24 +526,26 @@ begin
     Result := TResult<PChain>.Ok(@Gnosis)
   else if Id = Polygon.Id then
     Result := TResult<PChain>.Ok(@Polygon)
-  else if Id = PolygonMumbai.Id then
-    Result := TResult<PChain>.Ok(@PolygonMumbai)
+  else if Id = PolygonAmoy.Id then
+    Result := TResult<PChain>.Ok(@PolygonAmoy)
   else if Id = Fantom.Id then
     Result := TResult<PChain>.Ok(@Fantom)
   else if Id = Fantom_test_net.Id then
     Result := TResult<PChain>.Ok(@Fantom_test_net)
   else if Id = Arbitrum.Id then
     Result := TResult<PChain>.Ok(@Arbitrum)
-  else if Id = ArbitrumGoerli.Id then
-    Result := TResult<PChain>.Ok(@ArbitrumGoerli)
+  else if Id = ArbitrumSepolia.Id then
+    Result := TResult<PChain>.Ok(@ArbitrumSepolia)
   else if Id = Sepolia.Id then
     Result := TResult<PChain>.Ok(@Sepolia)
   else if Id = Base.Id then
     Result := TResult<PChain>.Ok(@Base)
-  else if Id = BaseGoerli.Id then
-    Result := TResult<PChain>.Ok(@BaseGoerli)
+  else if Id = BaseSepolia.Id then
+    Result := TResult<PChain>.Ok(@BaseSepolia)
   else if Id = PulseChain.Id then
     Result := TResult<PChain>.Ok(@PulseChain)
+  else if Id = Holesky.Id then
+    Result := TResult<PChain>.Ok(@Holesky)
   else
     Result := TResult<PChain>.Err(nil, TError.Create('Unknown chain id: %d', [Id]));
 end;
@@ -556,7 +590,12 @@ begin
   else if SameText(name, 'ERC20') or SameText(name, 'ERC-20') then
     Self := erc20
   else
-    Self := native;
+    Self := native; // probably ETH, otherwise BNB or MATIC maybe
+end;
+
+function TAssetTypeHelper.IsNFT: Boolean;
+begin
+  Result := Self in [erc721, erc1155];
 end;
 
 { TError }
@@ -656,13 +695,13 @@ begin
   Result := Self.FChain;
 end;
 
-// returns the chain’s latest native token price in USD (eg. ETH-USD for Ethereum, BNB-USD for BNB Chain, MATIC-USD for Polygon, etc)
+// returns the chain's latest native token price in USD (eg. ETH-USD for Ethereum, BNB-USD for BNB Chain, MATIC-USD for Polygon, etc)
 procedure TCustomWeb3.LatestPrice(const callback: TProc<Double, IError>);
 begin
   const coincap = procedure(const chain: TChain)
   begin
-    if not chain.Symbol.IsEmpty then
-      web3.coincap.price(chain.Symbol, callback)
+    if chain.Symbol <> '' then
+      web3.coincap.price(string(chain.Symbol), callback)
     else
       callback(0, TError.Create('Price feed does not exist on %s', [chain.Name]));
   end;
@@ -738,7 +777,7 @@ begin
               &to,                                                        // To
               fromWei(gasPrice, gwei, 2),                                 // Gas price (gwei)
               estimatedGas.ToString,                                      // Estimated gas (units)
-              DotToFloat(fromWei(estimatedGas * gasPrice, ether)) * price // Gas fee
+              dotToFloat(fromWei(estimatedGas * gasPrice, ether)) * price // Gas fee
             ]),
             TMsgDlgType.mtConfirmation, mbYesNo, 0, TMsgDlgBtn.mbNo
           );

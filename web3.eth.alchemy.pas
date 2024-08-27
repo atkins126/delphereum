@@ -46,26 +46,34 @@ uses
 
 function HTTPS(const chain: TChain; const apiKey: string; api: TAlchemyApi): IResult<string>;
 const
-  path: array[TAlchemyApi] of string = ('', 'nft');
+  path: array[TAlchemyApi] of string = ('', 'nft/');
 begin
   if chain = Ethereum then
     Result := TResult<string>.Ok(Format('https://eth-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
-  else if chain = Goerli then
-    Result := TResult<string>.Ok(Format('https://eth-goerli.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
   else if chain = Sepolia then
     Result := TResult<string>.Ok(Format('https://eth-sepolia.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = Holesky then
+    Result := TResult<string>.Ok(Format('https://eth-holesky.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
   else if chain = Optimism then
     Result := TResult<string>.Ok(Format('https://opt-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
-  else if chain = OptimismGoerli then
-    Result := TResult<string>.Ok(Format('https://opt-goerli.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = OptimismSepolia then
+    Result := TResult<string>.Ok(Format('https://opt-sepolia.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
   else if chain = Polygon then
     Result := TResult<string>.Ok(Format('https://polygon-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
-  else if chain = PolygonMumbai then
-    Result := TResult<string>.Ok(Format('https://polygon-mumbai.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = PolygonAmoy then
+    Result := TResult<string>.Ok(Format('https://polygon-amoy.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
   else if chain = Arbitrum then
     Result := TResult<string>.Ok(Format('https://arb-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
-  else if chain = ArbitrumGoerli then
-    Result := TResult<string>.Ok(Format('https://arb-goerli.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = ArbitrumSepolia then
+    Result := TResult<string>.Ok(Format('https://arb-sepolia.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = Base then
+    Result := TResult<string>.Ok(Format('https://base-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = BaseSepolia then
+    Result := TResult<string>.Ok(Format('https://base-sepolia.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = BNB then
+    Result := TResult<string>.Ok(Format('https://bnb-mainnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
+  else if chain = BNB_test_net then
+    Result := TResult<string>.Ok(Format('https://bnb-testnet.g.alchemy.com/%sv2/%s', [path[api], apiKey]))
   else if chain.RPC[TTransport.HTTPS] <> '' then
     Result := TResult<string>.Ok(chain.RPC[TTransport.HTTPS])
   else
@@ -76,22 +84,26 @@ function WebSocket(const chain: TChain; const apiKey: string): IResult<string>;
 begin
   if chain = Ethereum then
     Result := TResult<string>.Ok(Format('wss://eth-mainnet.g.alchemy.com/v2/%s', [apiKey]))
-  else if chain = Goerli then
-    Result := TResult<string>.Ok(Format('wss://eth-goerli.g.alchemy.com/v2/%s', [apiKey]))
   else if chain = Sepolia then
     Result := TResult<string>.Ok(Format('wss://eth-sepolia.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = Holesky then
+    Result := TResult<string>.Ok(Format('wss://eth-holesky.g.alchemy.com/v2/v2/%s', [apiKey]))
   else if chain = Optimism then
     Result := TResult<string>.Ok(Format('wss://opt-mainnet.g.alchemy.com/v2/%s', [apiKey]))
-  else if chain = OptimismGoerli then
-    Result := TResult<string>.Ok(Format('wss://opt-goerli.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = OptimismSepolia then
+    Result := TResult<string>.Ok(Format('wss://opt-sepolia.g.alchemy.com/v2/%s', [apiKey]))
   else if chain = Polygon then
     Result := TResult<string>.Ok(Format('wss://polygon-mainnet.g.alchemy.com/v2/%s', [apiKey]))
-  else if chain = PolygonMumbai then
-    Result := TResult<string>.Ok(Format('wss://polygon-mumbai.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = PolygonAmoy then
+    Result := TResult<string>.Ok(Format('wss://polygon-amoy.g.alchemy.com/v2/%s', [apiKey]))
   else if chain = Arbitrum then
     Result := TResult<string>.Ok(Format('wss://arb-mainnet.g.alchemy.com/v2/%s', [apiKey]))
-  else if chain = ArbitrumGoerli then
-    Result := TResult<string>.Ok(Format('wss://arb-goerli.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = ArbitrumSepolia then
+    Result := TResult<string>.Ok(Format('wss://arb-sepolia.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = Base then
+    Result := TResult<string>.Ok(Format('wss://base-mainnet.g.alchemy.com/v2/%s', [apiKey]))
+  else if chain = BaseSepolia then
+    Result := TResult<string>.Ok(Format('wss://base-sepolia.g.alchemy.com/v2%s', [apiKey]))
   else if chain.RPC[TTransport.WebSocket] <> '' then
     Result := TResult<string>.Ok(chain.RPC[TTransport.WebSocket])
   else

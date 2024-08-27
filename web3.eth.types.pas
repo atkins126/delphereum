@@ -72,6 +72,7 @@ type
     function &type: Byte;
     function ToString: string;
     function blockNumber: BigInteger;    // block number where this transaction was in. null when its pending.
+    function timeStamp: TUnixDateTime;   // the unix timestamp for when the transaction got mined.
     function from: TAddress;             // address of the sender.
     function gasLimit: BigInteger;       // gas limit provided by the sender.
     function gasPrice: TWei;             // gas price provided by the sender in Wei.
@@ -328,7 +329,7 @@ end;
 function TAddressHelper.Abbreviated: string;
 begin
   Result := string(Self);
-  Result := Copy(Result, System.Low(Result), 8);
+  Result := Copy(Result, System.Low(Result), 7) + '..' + Copy(Result, System.High(Result) - 4, MaxInt);
 end;
 
 procedure TAddressHelper.IsEOA(const client: IWeb3; const callback: TProc<Boolean, IError>);

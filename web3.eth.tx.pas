@@ -64,7 +64,7 @@ procedure signTransaction(
   const callback    : TProc<string, IError>);
 
 function signTransactionLegacy(
-  const chainId : Integer;
+  const chainId : UInt64;
   const nonce   : BigInteger;
   const from    : TPrivateKey;
   const &to     : TAddress;
@@ -74,7 +74,7 @@ function signTransactionLegacy(
   const gasLimit: BigInteger): IResult<string>;
 
 function signTransactionType2(
-  const chainId       : Integer;
+  const chainId       : UInt64;
   const nonce         : BigInteger;
   const from          : TPrivateKey;
   const &to           : TAddress;
@@ -257,7 +257,7 @@ begin
 end;
 
 function signTransactionLegacy(
-  const chainId : Integer;
+  const chainId : UInt64;
   const nonce   : BigInteger;
   const from    : TPrivateKey;
   const &to     : TAddress;
@@ -321,7 +321,7 @@ begin
 end;
 
 function signTransactionType2(
-  const chainId       : Integer;
+  const chainId       : UInt64;
   const nonce         : BigInteger;
   const from          : TPrivateKey;
   const &to           : TAddress;
@@ -399,6 +399,8 @@ function ecrecoverTransactionLegacy(const encoded: TBytes): IResult<TAddress>;
       EXIT;
     end;
     var I: Int32 := V[0];
+    if Length(V) = 2 then
+      I := 256 * I + V[1];
     if I < 35 then
     begin
       Result := TResult<Int32>.Err(0, 'V is out of range');
@@ -476,6 +478,8 @@ begin
         EXIT;
       end;
       var I: Int32 := B[0];
+      if Length(B) = 2 then
+        I := 256 * I + B[1];
       if I < 35 then
       begin
         Result := TResult<Int32>.Err(0, 'V is out of range');
@@ -727,8 +731,8 @@ type
   TTransaction = class(TDeserialized, ITransaction)
   public
     function &type: Byte;
-    function ToString: string; override;
     function blockNumber: BigInteger;    // block number where this transaction was in. null when its pending.
+    function timeStamp: TUnixDateTime;   // the unix timestamp for when the transaction got mined.
     function from: TAddress;             // address of the sender.
     function gasLimit: BigInteger;       // gas limit provided by the sender.
     function gasPrice: TWei;             // gas price provided by the sender in Wei.
@@ -747,21 +751,22 @@ begin
     Result := 0; // Legacy
 end;
 
-function TTransaction.ToString: string;
-begin
-  Result := web3.json.marshal(FJsonValue);
-end;
-
 // block number where this transaction was in. null when its pending.
 function TTransaction.blockNumber: BigInteger;
 begin
   Result := getPropAsStr(FJsonValue, 'blockNumber', '0x0');
 end;
 
+// the unix timestamp for when the transaction got mined.
+function TTransaction.timeStamp: TUnixDateTime;
+begin
+  Result := getPropAsBigInt(FJsonValue, 'timeStamp').AsInt64;
+end;
+
 // address of the sender.
 function TTransaction.from: TAddress;
 begin
-  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from'));
+  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from', string(TAddress.Zero)));
 end;
 
 // gas limit provided by the sender.
@@ -828,7 +833,6 @@ end;
 type
   TTxReceipt = class(TDeserialized, ITxReceipt)
   public
-    function ToString: string; override;
     function txHash: TTxHash;         // hash of the transaction.
     function from: TAddress;          // address of the sender.
     function &to: TAddress;           // address of the receiver. null when it's a contract creation transaction.
@@ -837,21 +841,16 @@ type
     function effectiveGasPrice: TWei; // eip-1559-only
   end;
 
-function TTxReceipt.ToString: string;
-begin
-  Result := web3.json.marshal(FJsonValue);
-end;
-
 // hash of the transaction.
 function TTxReceipt.txHash: TTxHash;
 begin
-  Result := TTxHash(getPropAsStr(FJsonValue, 'transactionHash', ''));
+  Result := TTxHash(getPropAsStr(FJsonValue, 'transactionHash'));
 end;
 
 // address of the sender.
 function TTxReceipt.from: TAddress;
 begin
-  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from'));
+  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from', string(TAddress.Zero)));
 end;
 
 // address of the receiver. null when it's a contract creation transaction.

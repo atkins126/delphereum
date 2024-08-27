@@ -79,6 +79,7 @@ type
 
   IContractABI = interface(IDeserializedArray<IContractSymbol>)
     function Contract: TAddress;
+    function IsERC20: Boolean;
     function IndexOf(
       const Name      : string;
       const SymbolType: TSymbolType;
@@ -101,6 +102,9 @@ type
     procedure getTransactions(
       const address : TAddress;
       const callback: TProc<ITransactions, IError>);
+    procedure getLatestTransaction(
+      const address : TAddress;
+      const callback: TProc<ITransaction, IError>);
     procedure getErc20TransferEvents(
       const address : TAddress;
       const callback: TProc<IDeserializedArray<IErc20TransferEvent>, IError>);
@@ -131,32 +135,32 @@ function endpoint(const chain: TChain): IResult<string>; overload;
 begin
   if chain = Ethereum then
     Result := TResult<string>.Ok('https://api.etherscan.io/api?')
-  else if chain = Goerli then
-    Result := TResult<string>.Ok('https://api-goerli.etherscan.io/api?')
   else if chain = Optimism then
     Result := TResult<string>.Ok('https://api-optimistic.etherscan.io/api?')
-  else if chain = OptimismGoerli then
-    Result := TResult<string>.Ok('https://api-goerli-optimistic.etherscan.io/api?')
+  else if chain = OptimismSepolia then
+    Result := TResult<string>.Ok('https://api-sepolia-optimistic.etherscan.io/api?')
   else if chain = BNB then
     Result := TResult<string>.Ok('https://api.bscscan.com/api?')
   else if chain = BNB_test_net then
     Result := TResult<string>.Ok('https://api-testnet.bscscan.com/api?')
   else if chain = Polygon then
     Result := TResult<string>.Ok('https://api.polygonscan.com/api?')
-  else if chain = PolygonMumbai then
-    Result := TResult<string>.Ok('https://api-testnet.polygonscan.com/api?')
+  else if chain = PolygonAmoy then
+    Result := TResult<string>.Ok('https://api-amoy.polygonscan.com/api?')
   else if chain = Fantom then
     Result := TResult<string>.Ok('https://api.ftmscan.com/api?')
   else if chain = Fantom_test_net then
     Result := TResult<string>.Ok('https://api-testnet.ftmscan.com/api?')
   else if chain = Arbitrum then
     Result := TResult<string>.Ok('https://api.arbiscan.io/api?')
-  else if chain = ArbitrumGoerli then
-    Result := TResult<string>.Ok('https://goerli.arbiscan.io/api?')
+  else if chain = ArbitrumSepolia then
+    Result := TResult<string>.Ok('https://api-sepolia.arbiscan.io/api?')
   else if chain = Sepolia then
     Result := TResult<string>.Ok('https://api-sepolia.etherscan.io/api?')
-  else if chain = BaseGoerli then
-    Result := TResult<string>.Ok('https://api-goerli.basescan.org/api?')
+  else if chain = Base then
+    Result := TResult<string>.Ok('https://api.basescan.org/api?')
+  else if chain = BaseSepolia then
+    Result := TResult<string>.Ok('https://api-sepolia.basescan.org/api?')
   else
     Result := TResult<string>.Err('', TError.Create('%s not supported', [chain.Name]));
 end;
@@ -236,7 +240,7 @@ end;
 
 function TErc20TransferEvent.From: TAddress;
 begin
-  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from'));
+  Result := TAddress.Create(getPropAsStr(FJsonValue, 'from', string(TAddress.Zero)));
 end;
 
 function TErc20TransferEvent.&To: TAddress;
@@ -323,6 +327,7 @@ type
     function Chain: TChain;
     function Contract: TAddress;
     function Item(const Index: Integer): IContractSymbol; override;
+    function IsERC20: Boolean;
     function IndexOf(
       const Name      : string;
       const SymbolType: TSymbolType;
@@ -359,6 +364,22 @@ end;
 function TContractABI.Item(const Index: Integer): IContractSymbol;
 begin
   Result := TContractSymbol.Create(TJsonArray(FJsonValue)[Index]);
+end;
+
+function TContractABI.IsERC20: Boolean;
+begin
+  Result :=
+    (Self.IndexOf('name', TSymbolType.Function, 0, TStateMutability.View) > -1)
+  and
+    (Self.IndexOf('symbol', TSymbolType.Function, 0, TStateMutability.View) > -1)
+  and
+    (Self.IndexOf('decimals', TSymbolType.Function, 0, TStateMutability.View) > -1)
+  and
+    (Self.IndexOf('balanceOf', TSymbolType.Function, 1, TStateMutability.View) > -1)
+  and
+    (Self.IndexOf('totalSupply', TSymbolType.Function, 0, TStateMutability.View) > -1)
+  and
+    (Self.IndexOf('transfer', TSymbolType.Function, 2, TStateMutability.NonPayable) > -1);
 end;
 
 function TContractABI.IndexOf(
@@ -435,6 +456,9 @@ type
     procedure getTransactions(
       const address : TAddress;
       const callback: TProc<ITransactions, IError>);
+    procedure getLatestTransaction(
+      const address : TAddress;
+      const callback: TProc<ITransaction, IError>);
     procedure getErc20TransferEvents(
       const address : TAddress;
       const callback: TProc<IDeserializedArray<IErc20TransferEvent>, IError>);
@@ -529,10 +553,43 @@ begin
     const &array = web3.json.getPropAsArr(response, 'result');
     if not Assigned(&array) then
     begin
-      callback(nil, TEtherscanError.Create(status, nil));
+      callback(nil, TEtherscanError.Create(status, response));
       EXIT;
     end;
     callback(TTransactions.Create(&array), nil);
+  end);
+end;
+
+procedure TEtherscan.getLatestTransaction(
+  const address : TAddress;
+  const callback: TProc<ITransaction, IError>);
+begin
+  Self.get(Format('module=account&action=txlist&address=%s&sort=desc&page=1&offset=1', [address]),
+  procedure(response: TJsonValue; err: IError)
+  begin
+    if Assigned(err) then
+    begin
+      callback(nil, err);
+      EXIT;
+    end;
+    const status = web3.json.getPropAsInt(response, 'status');
+    if status = 0 then
+    begin
+      callback(nil, TEtherscanError.Create(status, response));
+      EXIT;
+    end;
+    const &array = web3.json.getPropAsArr(response, 'result');
+    if not Assigned(&array) then
+    begin
+      callback(nil, TEtherscanError.Create(status, response));
+      EXIT;
+    end;
+    if &array.Count = 0 then
+    begin
+      callback(nil, nil);
+      EXIT;
+    end;
+    callback(createTransaction(&array.Items[0]), nil);
   end);
 end;
 
@@ -557,7 +614,7 @@ begin
     const &array = web3.json.getPropAsArr(response, 'result');
     if not Assigned(&array) then
     begin
-      callback(nil, TEtherscanError.Create(status, nil));
+      callback(nil, TEtherscanError.Create(status, response));
       EXIT;
     end;
     callback(TErc20TransferEvents.Create(&array), nil);
@@ -585,11 +642,11 @@ begin
     const &result = unmarshal(web3.json.getPropAsStr(response, 'result'));
     if not Assigned(&result) then
     begin
-      callback(nil, TEtherscanError.Create(status, nil));
+      callback(nil, TEtherscanError.Create(status, response));
       EXIT;
     end;
     try
-      callback(TContractABI.Create(Self.chain, contract, TJsonArray(&result)), nil);
+      callback(TContractABI.Create(Self.chain, contract, &result as TJsonArray), nil);
     finally
       &result.Free;
     end;
@@ -617,7 +674,7 @@ begin
     const &result = unmarshal(web3.json.getPropAsStr(response, 'result'));
     if not Assigned(&result) then
     begin
-      callback('', TEtherscanError.Create(status, nil));
+      callback('', TEtherscanError.Create(status, response));
       EXIT;
     end;
     try
@@ -630,7 +687,7 @@ begin
           EXIT;
         end;
       end;
-      callback('', TEtherscanError.Create(status, nil));
+      callback('', TEtherscanError.Create(status, response));
     finally
       &result.Free;
     end;

@@ -36,8 +36,9 @@ uses
 
 type
   ICoin = interface
-    function Symbol: string; // most common symbol used to identify this asset on an exchange
-    function Price : Double; // volume-weighted price based on real-time market data, translated to USD
+    function Symbol  : string; // most common symbol used to identify this asset on an exchange
+    function Price   : Double; // volume-weighted price based on real-time market data, translated to USD
+    function Decimals: Integer;
   end;
 
 function coin(const chain: TChain; const address: TAddress; const callback: TProc<ICoin, IError>): IAsyncResult; overload;
@@ -56,8 +57,9 @@ uses
 type
   TCoin = class(TDeserialized, ICoin)
   public
-    function Symbol: string;
-    function Price : Double;
+    function Symbol  : string;
+    function Price   : Double;
+    function Decimals: Integer;
   end;
 
 function TCoin.Symbol: string;
@@ -68,6 +70,11 @@ end;
 function TCoin.Price: Double;
 begin
   Result := getPropAsDouble(FJsonValue, 'price');
+end;
+
+function TCoin.Decimals: Integer;
+begin
+  Result := getPropAsInt(FJsonValue, 'decimals');
 end;
 
 function network(chain: TChain): string; inline;
@@ -87,7 +94,11 @@ begin
   else if chain = Fantom then
     Result := 'fantom'
   else if chain = Arbitrum then
-    Result := 'arbitrum';
+    Result := 'arbitrum'
+  else if chain = Base then
+    Result := 'base'
+  else if chain = PulseChain then
+    Result := 'pulse';
 end;
 
 function coin(const chain: TChain; const address: TAddress; const callback: TProc<ICoin, IError>): IAsyncResult;
@@ -108,7 +119,7 @@ begin
     const coin = getPropAsObj(coins, Format('%s:%s', [network(chain), address.ToChecksum]));
     if not Assigned(coin) then
     begin
-      callback(nil, TError.Create('coins.%s:%s is null', [network(chain), address.ToChecksum]));
+      callback(nil, TError.Create('defillama does not have current price of %s on %s', [address.Abbreviated, network(chain)]));
       EXIT;
     end;
     callback(TCoin.Create(coin), nil);
