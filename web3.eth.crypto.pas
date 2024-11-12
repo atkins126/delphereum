@@ -64,15 +64,17 @@ type
     R: TBigInteger;
     S: TBigInteger;
     V: TBigInteger;
-    class function Empty: TSignature; static;
   public
-    function ToHex: string;
     constructor Create(const R, S, V: TBigInteger);
     class function FromHex(const hex: string): IResult<TSignature>; static;
+    function ToHex: string;
   end;
 
 function publicKeyToAddress(const pubKey: IECPublicKeyParameters): TAddress;
-function sign(const privateKey: TPrivateKey; const msg: string): TSignature;
+
+function sign(const privateKey: TPrivateKey; const msg: string): TSignature; overload;
+function sign(const privateKey: TPrivateKey; const raw: TBytes): TSignature; overload;
+
 function ecrecover(const msg: string; const signature: TSignature): IResult<TAddress>; overload;
 function ecrecover(const data: TBytes; const signature: TSignature; const getRecId: TGetRecId): IResult<TAddress>; overload;
 
@@ -89,7 +91,7 @@ begin
 end;
 
 // https://github.com/ethereum/go-ethereum/pull/2940
-function prefix(const msg: string): TBytes;
+function pr2940(const msg: string): TBytes;
 begin
   Result := web3.utils.sha3(
     TEncoding.UTF8.GetBytes(
@@ -101,10 +103,15 @@ end;
 // sign message, output Ethereum-specific signature
 function sign(const privateKey: TPrivateKey; const msg: string): TSignature;
 begin
+  Result := sign(privateKey, pr2940(msg));
+end;
+
+function sign(const privateKey: TPrivateKey; const raw: TBytes): TSignature;
+begin
   const Signer = TEthereumSigner.Create;
   try
     Signer.Init(True, privateKey);
-    const Signature = Signer.GenerateSignature(prefix(msg));
+    const Signature = Signer.GenerateSignature(raw);
     const v = Signature.rec.Add(TBigInteger.ValueOf(27));
     Result := TSignature.Create(Signature.r, Signature.s, v);
   finally
@@ -115,18 +122,18 @@ end;
 // recover signer from Ethereum signed message
 function ecrecover(const msg: string; const signature: TSignature): IResult<TAddress>;
 begin
-  Result := ecrecover(prefix(msg), signature, function(const V: TBigInteger): IResult<Int32>
+  Result := ecrecover(pr2940(msg), signature, function(const V: TBigInteger): IResult<Int32>
   begin
     const B = V.ToByteArrayUnsigned;
     if Length(B) = 0 then
     begin
-      Result := TResult<Int32>.Err(0, 'V is null');
+      Result := TResult<Int32>.Err('V is null');
       EXIT;
     end;
     var I: Int32 := B[0];
     if (I < 27) or (I > 34) then
     begin
-      Result := TResult<Int32>.Err(0, 'V is out of range');
+      Result := TResult<Int32>.Err('V is out of range');
       EXIT;
     end;
     if I >= 31 then I := I - 4;
@@ -151,7 +158,7 @@ begin
   const recId = getRecId(signature.V);
   if recId.isErr then
   begin
-    Result := TResult<TAddress>.Err(TAddress.Zero, recId.Error);
+    Result := TResult<TAddress>.Err(recId.Error);
     EXIT;
   end;
 
@@ -162,14 +169,14 @@ begin
   const x = signature.R.Add(i.Multiply(n));
   if x.CompareTo(prime) >= 0 then
   begin
-    Result := TResult<TAddress>.Err(TAddress.Zero, 'an unknown error occurred');
+    Result := TResult<TAddress>.Err('an unknown error occurred');
     EXIT;
   end;
 
   const R = decompressKey(curve.Curve, x, (recId.Value and 1) = 1);
   if not R.Multiply(n).IsInfinity then
   begin
-    Result := TResult<TAddress>.Err(TAddress.Zero, 'an unknown error occurred');
+    Result := TResult<TAddress>.Err('an unknown error occurred');
     EXIT;
   end;
 
@@ -209,19 +216,12 @@ begin
   Self.V := V;
 end;
 
-class function TSignature.Empty: TSignature;
-begin
-  Result.R := TBigInteger.Zero;
-  Result.S := TBigInteger.Zero;
-  Result.V := TBigInteger.Zero;
-end;
-
 class function TSignature.FromHex(const hex: string): IResult<TSignature>;
 begin
   const bytes = web3.utils.fromHex(hex);
   if Length(bytes) < 65 then
   begin
-    Result := TResult<TSignature>.Err(TSignature.Empty, 'out of range');
+    Result := TResult<TSignature>.Err('out of range');
     EXIT;
   end;
 
